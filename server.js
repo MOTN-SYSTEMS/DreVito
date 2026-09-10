@@ -92,6 +92,12 @@ const PUBLIC_STATIC_FILES = new Set([
 
 const CONFIRMED_HERO_TITLE = 'Dřevito – když se umění snoubí s citem k přirozenosti';
 const CONFIRMED_AUTHOR_TITLE = 'Příběh za značkou – Vít Thorio, tvůrce Dřevito';
+const LEGACY_HERO_TITLE = 'Dřevito — dřevěné výrobky zhotovené srdcem';
+const LEGACY_HERO_EYEBROWS = new Set([
+  'Rodinná dílna · Dolní Ředice',
+  'Rodinná dílna Dolní Ředice'
+]);
+const LEGACY_AUTHOR_TITLE = 'Příběh za značkou';
 
 const DEFAULT_SITE_IMAGE_TARGETS = [
   { key: 'hero', label: 'Úvodní fotka', url: '/main.JPG', alt: 'Dřevito dřevěné výrobky' },
@@ -7811,8 +7817,10 @@ function normalizeHomepageFixedBlock(definition, rawBlock = {}) {
   const content = {};
 
   if (definition.id === 'hero') {
-    content.eyebrow = homepageContentField(rawContent, 'eyebrow', defaults.eyebrow, 120);
-    content.title = homepageContentField(rawContent, 'title', defaults.title, 180);
+    const eyebrow = homepageContentField(rawContent, 'eyebrow', defaults.eyebrow, 120);
+    const title = homepageContentField(rawContent, 'title', defaults.title, 180);
+    content.eyebrow = LEGACY_HERO_EYEBROWS.has(eyebrow) ? '' : eyebrow;
+    content.title = title === LEGACY_HERO_TITLE ? CONFIRMED_HERO_TITLE : title;
     content.body = homepageContentField(rawContent, 'body', defaults.body, 800);
     content.image = normalizeHomepageImage(rawContent.image, defaults.image);
     content.primary_label = homepageContentField(rawContent, 'primary_label', defaults.primary_label, 80);
@@ -7834,7 +7842,8 @@ function normalizeHomepageFixedBlock(definition, rawBlock = {}) {
     content.title = homepageContentField(rawContent, 'title', defaults.title, 180);
     content.body = homepageContentField(rawContent, 'body', defaults.body, 1600);
   } else if (definition.id === 'author') {
-    content.title = homepageContentField(rawContent, 'title', defaults.title, 180);
+    const title = homepageContentField(rawContent, 'title', defaults.title, 180);
+    content.title = title === LEGACY_AUTHOR_TITLE ? CONFIRMED_AUTHOR_TITLE : title;
     content.lead = homepageContentField(rawContent, 'lead', defaults.lead, 1400);
     content.body = homepageContentField(rawContent, 'body', defaults.body, 6000);
     content.signature = homepageContentField(rawContent, 'signature', defaults.signature, 120);

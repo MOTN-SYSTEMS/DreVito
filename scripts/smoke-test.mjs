@@ -246,7 +246,44 @@ try {
   check(publicHomepageHtml.includes('data-cms-mode="configured"'), 'Configured local CMS was not identified in the served page.');
   check(publicHomepageHtml.includes('Příběh za značkou – Vít Thorio, tvůrce Dřevito'), 'Static homepage did not contain the complete author identification.');
 
+  const homepageCmsDbPath = path.join(dataDir, 'cms-db.json');
+  const cmsFixture = JSON.parse(await readFile(homepageCmsDbPath, 'utf8'));
+  const originalSiteContent = cloneJson(cmsFixture.site_content);
+  const persistedLegacyLayout = cloneJson(homepageState.layout);
+  persistedLegacyLayout.blocks.find((block) => block.id === 'hero').content.title = 'Dřevito — dřevěné výrobky zhotovené srdcem';
+  persistedLegacyLayout.blocks.find((block) => block.id === 'hero').content.eyebrow = 'Rodinná dílna · Dolní Ředice';
+  persistedLegacyLayout.blocks.find((block) => block.id === 'hero').content.image = { media_id: 'legacy-production-homepage', url: '/main.JPG', alt: 'Legacy production hero' };
+  persistedLegacyLayout.blocks.find((block) => block.id === 'author').content.title = 'Příběh za značkou';
+  const persistedAt = new Date().toISOString();
+  cmsFixture.site_content.push({
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    content_key: 'homepage.layout',
+    locale: 'cs',
+    section: 'homepage',
+    label: 'Persisted legacy homepage',
+    content_type: 'json',
+    value: persistedLegacyLayout,
+    status: 'published',
+    sort_order: 0,
+    published_at: persistedAt,
+    created_at: persistedAt,
+    updated_at: persistedAt
+  });
+  await writeFile(homepageCmsDbPath, `${JSON.stringify(cmsFixture, null, 2)}\n`);
+
   let publicContent = await jsonRequest('/api/public-content?locale=cs', { authenticated: false });
+  const compatibleHero = publicContent.homepage_layout?.blocks?.find((block) => block.id === 'hero');
+  const compatibleAuthor = publicContent.homepage_layout?.blocks?.find((block) => block.id === 'author');
+  check(publicContent.homepage_source === 'published_layout', 'Persisted homepage layout did not remain the public source.');
+  check(compatibleHero?.content?.title === 'Dřevito – když se umění snoubí s citem k přirozenosti', 'Persisted homepage kept the obsolete hero title.');
+  check(compatibleHero?.content?.eyebrow === '', 'Persisted homepage kept the obsolete workshop eyebrow.');
+  check(compatibleHero?.content?.image?.url === '/main.JPG' && compatibleHero?.content?.image?.media_id === 'legacy-production-homepage', 'Persisted legacy homepage image lost its embedded compatibility URL.');
+  check(compatibleAuthor?.content?.title === 'Příběh za značkou – Vít Thorio, tvůrce Dřevito', 'Persisted homepage kept the incomplete author title.');
+
+  cmsFixture.site_content = originalSiteContent;
+  await writeFile(homepageCmsDbPath, `${JSON.stringify(cmsFixture, null, 2)}\n`);
+
+  publicContent = await jsonRequest('/api/public-content?locale=cs', { authenticated: false });
   check(publicContent.homepage_source === 'legacy_bridge', 'Legacy-only homepage was not exposed through the controlled bridge.');
   check(publicContent.homepage_layout?.blocks?.find((block) => block.id === 'hero')?.content?.title === 'Dřevito – když se umění snoubí s citem k přirozenosti', 'Legacy bridge restored an obsolete hero title.');
 
