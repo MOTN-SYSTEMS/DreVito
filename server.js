@@ -8439,12 +8439,16 @@ async function fetchPublicMediaMap(mediaIds) {
 function hydratePublicImageRef(image, mediaMap) {
   const source = image && typeof image === 'object' ? image : {};
   const mediaId = String(source.media_id || source.mediaId || '').trim();
-  const media = mediaId ? mediaMap.get(mediaId) : null;
-  // A reference carrying a media ID is canonical: it must resolve to an
-  // eligible public media row. Falling back to the embedded URL here would
-  // expose stale URLs when the row is missing or deliberately private.
-  if (mediaId && !media) return null;
-  const url = String(mediaId ? media.public_url : source.url || '').trim();
+  const isLegacyMediaId = mediaId.startsWith('legacy-');
+  const media = mediaId && !isLegacyMediaId ? mediaMap.get(mediaId) : null;
+  // Legacy references predate the canonical media table and keep their
+  // original embedded URL. Every other non-empty media ID remains canonical:
+  // it must resolve to an eligible public row and never uses a stale URL.
+  if (mediaId && !isLegacyMediaId && !media) return null;
+  const resolvedUrl = mediaId
+    ? (isLegacyMediaId ? source.url : media.public_url)
+    : source.url;
+  const url = String(resolvedUrl || '').trim();
   if (!url) return null;
 
   return {

@@ -30,7 +30,9 @@ assert.doesNotMatch(homepageSource, /Rodinná dílna(?: ·)? Dolní Ředice/, 'R
 assert.match(homepageSource, /\.about__image\s*\{[\s\S]{0,160}--about-frame-shape:\s*50%/, 'Řemeslo s tradicí no longer uses the clean oval frame.');
 assert.doesNotMatch(serverSource, /children\.map\(renderCategoryRow\)/, 'Category renderer still passes the child index as a hierarchy warning.');
 assert.match(serverSource, /children\.map\(function\(child\) \{ return renderCategoryRow\(child\); \}\)/, 'Valid child rows are not rendered with an explicit warning-free call.');
-assert.match(serverSource, /if \(mediaId && !media\) return null;/, 'Missing or private canonical media can fall back to a stale embedded URL.');
+assert.match(serverSource, /const isLegacyMediaId = mediaId\.startsWith\('legacy-'\);/, 'Explicit legacy media references cannot use their embedded compatibility URL.');
+assert.match(serverSource, /if \(mediaId && !isLegacyMediaId && !media\) return null;/, 'Missing or private canonical media can fall back to a stale embedded URL.');
+assert.match(serverSource, /isLegacyMediaId \? source\.url : media\.public_url/, 'Legacy media compatibility is not isolated from canonical public media resolution.');
 assert.match(serverSource, /const mediaMap = givenMediaMap \|\| await fetchPublicMediaMap\(mediaIds\);/, 'Canonical media IDs are still gated by the legacy target inventory.');
 assert.match(serverSource, /sharp\(file\.buffer,[\s\S]*failOn: 'error'[\s\S]*\.raw\(\)\.toBuffer\(\{ resolveWithObject: true \}\)/, 'Server upload validation does not force a complete image decode.');
 

@@ -256,6 +256,12 @@ try {
   await request('/vyrobky/rustikalni-nabytek/stoly/neplatna-uroven', { authenticated: false, expectedStatus: 404 });
 
   const defaultHomepageBlocks = new Map(homepageState.layout.blocks.map((block) => [block.id, cloneJson(block)]));
+  const legacyHero = cloneJson(defaultHomepageBlocks.get('hero'));
+  legacyHero.content.image = {
+    media_id: 'legacy-production-homepage',
+    url: '/main.JPG',
+    alt: 'Legacy production hero'
+  };
   const homepageStory = {
     id: 'story-smoke-homepage',
     kind: 'story',
@@ -265,7 +271,12 @@ try {
       eyebrow: 'Ze zákulisí',
       title: 'Smoke blok domovské stránky',
       body: 'První publikovaný text vlastního bloku.',
-      image: { url: '', alt: '', caption: '', media_id: '' },
+      image: {
+        url: '/stale-embedded-url.jpg',
+        alt: 'Missing canonical media',
+        caption: '',
+        media_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      },
       layout: 'image-left',
       theme: 'cream',
       cta_label: 'Napište nám',
@@ -280,7 +291,7 @@ try {
       homepageStory,
       defaultHomepageBlocks.get('author'),
       defaultHomepageBlocks.get('custom'),
-      defaultHomepageBlocks.get('hero')
+      legacyHero
     ]
   };
 
@@ -351,6 +362,9 @@ try {
   check(publicContent.homepage_layout.blocks.map((block) => block.id).join(',') === 'hero,blog,about,story-smoke-homepage,author,custom,products', 'Published homepage block order did not match the draft.');
   check(publicContent.homepage_layout.blocks.find((block) => block.id === homepageStory.id)?.content.body === 'Publikovaná verze vlastního bloku.', 'Published homepage story content was incorrect.');
   check(publicContent.homepage_layout.blocks.find((block) => block.id === 'blog')?.content.body === 'Smoke text Z dílny publikovaný z editoru.', 'Published Z dílny content did not reach the public API.');
+  check(publicContent.homepage_layout.blocks.find((block) => block.id === 'hero')?.content.image?.url === '/main.JPG', 'Published legacy homepage media lost its embedded compatibility URL.');
+  check(publicContent.homepage_layout.blocks.find((block) => block.id === 'hero')?.content.image?.media_id === 'legacy-production-homepage', 'Published legacy homepage media lost its legacy reference.');
+  check(publicContent.homepage_layout.blocks.find((block) => block.id === homepageStory.id)?.content.image?.url === '', 'Missing canonical homepage media used a stale embedded URL.');
   const publishedHomepageLayout = cloneJson(publicContent.homepage_layout);
 
   const changedDraftLayout = cloneJson(homepageState.layout);
