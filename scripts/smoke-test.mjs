@@ -906,6 +906,29 @@ try {
   await request('/main.JPG', { authenticated: false, expectedStatus: 200 });
   await request('/image-upload-tools.js', { authenticated: false, expectedStatus: 200 });
 
+  const productionPublicSnapshot = await jsonRequest('/api/public-content?locale=cs', { authenticated: false });
+  const previewBridgeDataDir = path.join(tempRoot, 'preview-public-bridge-data');
+  const previewBridgeUploadDir = path.join(tempRoot, 'preview-public-bridge-uploads');
+  const previewBridgeBaseUrl = await startAuxiliaryServer({
+    DREVITO_DATA_DIR: previewBridgeDataDir,
+    DREVITO_UPLOAD_DIR: previewBridgeUploadDir,
+    SUPABASE_URL: '',
+    SUPABASE_SERVICE_ROLE_KEY: '',
+    VERCEL_ENV: 'preview',
+    VERCEL_PROJECT_PRODUCTION_URL: baseUrl,
+    VERCEL_URL: 'preview.example.test',
+    DREVITO_STATIC_FALLBACK: ''
+  });
+  const previewBridgeResponse = await auxiliaryRequest(previewBridgeBaseUrl, '/api/public-content?locale=cs', 200);
+  const previewBridgePayload = await previewBridgeResponse.json();
+  check(previewBridgePayload.homepage_source === 'production_public_bridge', 'Preview did not identify its read-only production public-content bridge.');
+  check(previewBridgePayload.homepage_layout?.blocks?.find((block) => block.id === 'hero')?.content?.image?.url === '/main.JPG', 'Preview public-content bridge lost the legacy homepage image.');
+  check(previewBridgePayload.homepage_layout?.blocks?.find((block) => block.id === 'hero')?.content?.title === 'Dřevito – když se umění snoubí s citem k přirozenosti', 'Preview public-content bridge lost the confirmed hero title.');
+  check(previewBridgePayload.homepage_layout?.blocks?.find((block) => block.id === 'author')?.content?.title === 'Příběh za značkou – Vít Thorio, tvůrce Dřevito', 'Preview public-content bridge lost the confirmed author title.');
+  check(previewBridgePayload.product_categories.length === productionPublicSnapshot.product_categories.length, 'Preview public-content bridge did not preserve the current public category set.');
+  check(previewBridgePayload.products.length === productionPublicSnapshot.products.length, 'Preview public-content bridge did not preserve the current public product set.');
+  check(previewBridgePayload.blog_posts.length === productionPublicSnapshot.blog_posts.length, 'Preview public-content bridge did not preserve the current public blog set.');
+
   const emptyDataDir = path.join(tempRoot, 'configured-empty-data');
   const emptyUploadDir = path.join(tempRoot, 'configured-empty-uploads');
   await mkdir(emptyDataDir, { recursive: true });

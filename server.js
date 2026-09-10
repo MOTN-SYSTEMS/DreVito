@@ -8494,8 +8494,101 @@ function hydratePublicSiteValue(item, mediaMap) {
   return value;
 }
 
+function previewProductionPublicContentUrl(locale) {
+  if (process.env.VERCEL_ENV !== 'preview') return null;
+  const rawProductionUrl = String(process.env.VERCEL_PROJECT_PRODUCTION_URL || '').trim();
+  if (!rawProductionUrl) return null;
+
+  let url;
+  try {
+    url = new URL(rawProductionUrl.includes('://') ? rawProductionUrl : `https://${rawProductionUrl}`);
+  } catch {
+    return null;
+  }
+
+  const isLocalTestSource = process.env.NODE_ENV === 'test'
+    && url.protocol === 'http:'
+    && ['127.0.0.1', 'localhost'].includes(url.hostname);
+  if (url.protocol !== 'https:' && !isLocalTestSource) return null;
+
+  const previewHost = String(process.env.VERCEL_URL || '').replace(/^https?:\/\//, '').replace(/\/+$/, '').toLowerCase();
+  if (previewHost && previewHost === url.host.toLowerCase()) return null;
+
+  url.pathname = '/api/public-content';
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('locale', locale);
+  return url;
+}
+
+function sanitizeProductionPublicPayload(payload, locale) {
+  const source = payload && typeof payload === 'object' ? cloneJson(payload) : {};
+  const mediaMap = new Map();
+  const sanitizeCategory = (category) => ({
+    ...category,
+    image: category && category.image ? hydratePublicImageRef(category.image, mediaMap) : null
+  });
+  const sanitizeCategories = (categories) => (Array.isArray(categories) ? categories.map(sanitizeCategory) : []);
+  const sanitizeEntry = (entry) => {
+    const photos = hydratePublicPhotos(entry && entry.photos, mediaMap);
+    return {
+      ...entry,
+      photos,
+      featured_image: photos[0] || null,
+      categories: sanitizeCategories(entry && entry.categories)
+    };
+  };
+  const homepageLayout = source.homepage_layout && typeof source.homepage_layout === 'object'
+    ? hydrateHomepageLayout(source.homepage_layout, mediaMap)
+    : null;
+  const siteContent = {};
+  Object.entries(source.site_content && typeof source.site_content === 'object' ? source.site_content : {}).forEach(([key, item]) => {
+    if (!item || typeof item !== 'object') return;
+    const normalizedItem = { ...item, content_key: item.content_key || key };
+    siteContent[key] = {
+      ...normalizedItem,
+      value: normalizedItem.content_key === HOMEPAGE_LAYOUT_CONTENT_KEY
+        ? homepageLayout
+        : hydratePublicSiteValue(normalizedItem, mediaMap)
+    };
+  });
+
+  return {
+    ...source,
+    ok: true,
+    configured: true,
+    locale,
+    homepage_layout: homepageLayout,
+    homepage_source: 'production_public_bridge',
+    site_content: siteContent,
+    products: (Array.isArray(source.products) ? source.products : []).map(sanitizeEntry),
+    product_categories: sanitizeCategories(source.product_categories),
+    blog_posts: (Array.isArray(source.blog_posts) ? source.blog_posts : []).map(sanitizeEntry),
+    blog_categories: sanitizeCategories(source.blog_categories),
+    product_filters: Array.isArray(source.product_filters) ? source.product_filters : []
+  };
+}
+
+async function getPreviewProductionPublicPayload(locale) {
+  const url = previewProductionPublicContentUrl(locale);
+  if (!url) return null;
+
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(8000)
+  });
+  if (!response.ok) throw new Error(`Preview public content source returned ${response.status}.`);
+  const payload = await response.json();
+  if (!payload || payload.ok !== true || payload.configured !== true) {
+    throw new Error('Preview public content source is not configured.');
+  }
+  return sanitizeProductionPublicPayload(payload, locale);
+}
+
 async function getPublicCmsPayload(locale = 'cs') {
   if (!isSupabaseConfigured()) {
+    const previewPayload = await getPreviewProductionPublicPayload(locale);
+    if (previewPayload) return previewPayload;
     if (process.env.NODE_ENV === 'production') {
       const error = new Error('Produkční CMS není nakonfigurované.');
       error.statusCode = 503;
