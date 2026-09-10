@@ -81,13 +81,19 @@ async function startAuxiliaryServer(envOverrides) {
   throw new Error(`Auxiliary server did not start.\n${state.output}`);
 }
 
-async function auxiliaryRequest(auxiliaryBaseUrl, pathname, expectedStatus) {
+async function auxiliaryRequest(auxiliaryBaseUrl, pathname, expectedStatus, {
+  method = 'GET',
+  body,
+  headers = {}
+} = {}) {
   const response = await fetch(`${auxiliaryBaseUrl}${pathname}`, {
-    headers: { Accept: 'application/json' },
+    method,
+    body,
+    headers: { Accept: 'application/json', ...headers },
     redirect: 'manual'
   });
   const expectedStatuses = Array.isArray(expectedStatus) ? expectedStatus : [expectedStatus];
-  check(expectedStatuses.includes(response.status), `Auxiliary GET ${pathname} returned ${response.status}; expected ${expectedStatuses.join(' or ')}`);
+  check(expectedStatuses.includes(response.status), `Auxiliary ${method} ${pathname} returned ${response.status}; expected ${expectedStatuses.join(' or ')}`);
   return response;
 }
 
@@ -159,6 +165,11 @@ try {
   check((unauthenticatedHomepageApi.headers.get('content-type') || '').includes('application/json'), 'Unauthenticated homepage API response was not JSON.');
   const unauthenticatedHomepageData = await unauthenticatedHomepageApi.json();
   check(unauthenticatedHomepageData.ok === false, 'Unauthenticated homepage API response did not return ok:false.');
+
+  await request('/client-preview/admin', {
+    authenticated: false,
+    expectedStatus: 404
+  });
 
   const loginResponse = await request('/admin/dev-login?next=/admin', {
     method: 'POST',
@@ -928,6 +939,118 @@ try {
   check(previewBridgePayload.product_categories.length === productionPublicSnapshot.product_categories.length, 'Preview public-content bridge did not preserve the current public category set.');
   check(previewBridgePayload.products.length === productionPublicSnapshot.products.length, 'Preview public-content bridge did not preserve the current public product set.');
   check(previewBridgePayload.blog_posts.length === productionPublicSnapshot.blog_posts.length, 'Preview public-content bridge did not preserve the current public blog set.');
+
+  const lockedPreviewAdmin = await auxiliaryRequest(previewBridgeBaseUrl, '/admin', [302, 303]);
+  check((lockedPreviewAdmin.headers.get('location') || '').startsWith('/admin/login'), 'Real Preview admin stopped requiring its normal application login.');
+
+  const previewReviewPages = [
+    ['/client-preview/admin', 'Administrace obsahu'],
+    ['/client-preview/admin/homepage', 'id="homepage-editor"'],
+    ['/client-preview/admin/product-categories', 'id="category-app"'],
+    ['/client-preview/admin/products', 'id="product-app"'],
+    ['/client-preview/admin/blog-posts', 'id="blog-app"']
+  ];
+  for (const [pathname, marker] of previewReviewPages) {
+    const response = await auxiliaryRequest(previewBridgeBaseUrl, pathname, 200);
+    const html = await response.text();
+    check(html.includes(marker), `Preview review page ${pathname} did not render its expected UI.`);
+    check(html.includes('Client preview · Read only'), `Preview review page ${pathname} did not show its read-only banner.`);
+    check(html.includes('class="preview-admin-review"'), `Preview review page ${pathname} did not activate its control lock.`);
+    check(html.includes('/client-preview/admin'), `Preview review page ${pathname} did not keep navigation inside the dedicated review route.`);
+    if (pathname !== '/client-preview/admin') {
+      check(html.includes('/client-preview/admin/api/'), `Preview review page ${pathname} did not route data reads through the review adapter.`);
+    }
+    check(!response.headers.get('set-cookie'), `Preview review page ${pathname} unexpectedly issued a session cookie.`);
+    check(response.headers.get('x-robots-tag')?.includes('noindex'), `Preview review page ${pathname} was not marked noindex.`);
+  }
+
+  const previewHomepageReviewResponse = await auxiliaryRequest(previewBridgeBaseUrl, '/client-preview/admin/api/homepage', 200);
+  const previewHomepageReview = await previewHomepageReviewResponse.json();
+  check(previewHomepageReview.read_only === true, 'Preview homepage review API was not explicitly read-only.');
+  check(previewHomepageReview.has_draft === false, 'Preview homepage review exposed a draft state.');
+  check(previewHomepageReview.layout?.blocks?.find((block) => block.id === 'hero')?.content?.image?.url === '/main.JPG', 'Preview homepage review lost the legacy hero image.');
+  check(previewHomepageReview.layout?.blocks?.find((block) => block.id === 'hero')?.content?.title === 'Dřevito – když se umění snoubí s citem k přirozenosti', 'Preview homepage review lost the confirmed hero copy.');
+  check(previewHomepageReview.layout?.blocks?.find((block) => block.id === 'author')?.content?.title === 'Příběh za značkou – Vít Thorio, tvůrce Dřevito', 'Preview homepage review lost the confirmed author copy.');
+
+  const previewCategoryReviewResponse = await auxiliaryRequest(previewBridgeBaseUrl, '/client-preview/admin/api/product-categories', 200);
+  const previewCategoryReview = await previewCategoryReviewResponse.json();
+  check(previewCategoryReview.read_only === true, 'Preview category review API was not explicitly read-only.');
+  check(previewCategoryReview.categories.length === productionPublicSnapshot.product_categories.length, 'Preview category review did not preserve the public production category set.');
+  check(previewCategoryReview.categories.every((category) => category.is_visible === true && category.archived_at === null), 'Preview category review did not restore the fields required by the admin UI.');
+
+  const previewProductReviewResponse = await auxiliaryRequest(previewBridgeBaseUrl, '/client-preview/admin/api/products', 200);
+  const previewProductReview = await previewProductReviewResponse.json();
+  check(previewProductReview.products.length === productionPublicSnapshot.products.length, 'Preview product review did not preserve the public production products.');
+  check(previewProductReview.products.every((product) => product.is_published === true && product.is_visible === true && Array.isArray(product.category_ids) && Array.isArray(product.filter_option_ids)), 'Preview product review did not restore the fields required by the admin UI.');
+
+  const previewBlogReviewResponse = await auxiliaryRequest(previewBridgeBaseUrl, '/client-preview/admin/api/blog-posts', 200);
+  const previewBlogReview = await previewBlogReviewResponse.json();
+  check(previewBlogReview.posts.length === productionPublicSnapshot.blog_posts.length, 'Preview blog review did not preserve the public production posts.');
+  check(previewBlogReview.posts.every((post) => post.status === 'published' && Array.isArray(post.category_ids)), 'Preview blog review did not restore the fields required by the admin UI.');
+
+  const previewMutationRequests = [
+    ['POST', '/client-preview/admin/api/media/upload'],
+    ['POST', '/client-preview/admin/api/media/delete'],
+    ['PUT', '/client-preview/admin/api/homepage/draft'],
+    ['POST', '/client-preview/admin/api/homepage/publish'],
+    ['POST', '/client-preview/admin/api/homepage/reset-draft'],
+    ['POST', '/client-preview/admin/api/site-content'],
+    ['POST', '/client-preview/admin/api/site-content/photo-upload'],
+    ['PATCH', '/client-preview/admin/api/site-content/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+    ['POST', '/client-preview/admin/api/site-content/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/archive'],
+    ['POST', '/client-preview/admin/api/product-filters'],
+    ['PATCH', '/client-preview/admin/api/product-filters/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+    ['POST', '/client-preview/admin/api/product-filters/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/options'],
+    ['PATCH', '/client-preview/admin/api/product-filters/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/options/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'],
+    ['POST', '/client-preview/admin/api/products'],
+    ['POST', '/client-preview/admin/api/products/photo-upload'],
+    ['PATCH', '/client-preview/admin/api/products/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+    ['POST', '/client-preview/admin/api/products/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/archive'],
+    ['POST', '/client-preview/admin/api/blog-posts'],
+    ['POST', '/client-preview/admin/api/blog-posts/photo-upload'],
+    ['PATCH', '/client-preview/admin/api/blog-posts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+    ['POST', '/client-preview/admin/api/blog-posts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/archive'],
+    ['POST', '/client-preview/admin/api/product-categories'],
+    ['POST', '/client-preview/admin/api/product-categories/photo-upload'],
+    ['PATCH', '/client-preview/admin/api/product-categories/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+    ['POST', '/client-preview/admin/api/product-categories/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/archive'],
+    ['POST', '/client-preview/admin/api/blog-categories'],
+    ['PATCH', '/client-preview/admin/api/blog-categories/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+    ['POST', '/client-preview/admin/api/blog-categories/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/archive'],
+    ['DELETE', '/client-preview/admin/api/future-write'],
+    ['POST', '/admin/api/homepage/publish']
+  ];
+  for (const [method, pathname] of previewMutationRequests) {
+    const response = await auxiliaryRequest(previewBridgeBaseUrl, pathname, 403, {
+      method,
+      body: '{}',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await response.json();
+    check(data.ok === false && data.read_only === true, `Preview mutation ${method} ${pathname} did not fail closed as read-only.`);
+    check(response.headers.get('cache-control') === 'no-store', `Preview mutation ${method} ${pathname} was not marked no-store.`);
+  }
+
+  const productionPublicSnapshotAfterReview = await jsonRequest('/api/public-content?locale=cs', { authenticated: false });
+  assert.deepEqual(productionPublicSnapshotAfterReview, productionPublicSnapshot, 'Preview review requests changed the upstream public production fixture.');
+  await assert.rejects(readFile(path.join(previewBridgeDataDir, 'cms-db.json')), { code: 'ENOENT' }, 'Preview review created a local CMS database.');
+  await assert.rejects(readFile(path.join(previewBridgeDataDir, 'media-db.json')), { code: 'ENOENT' }, 'Preview review created a local media database.');
+
+  const configuredPreviewBaseUrl = await startAuxiliaryServer({
+    SUPABASE_URL: 'https://preview-must-not-call.invalid',
+    SUPABASE_SERVICE_ROLE_KEY: 'fake-preview-service-role-key',
+    VERCEL_ENV: 'preview',
+    VERCEL_PROJECT_PRODUCTION_URL: baseUrl,
+    VERCEL_URL: 'preview-with-supabase.example.test'
+  });
+  await auxiliaryRequest(configuredPreviewBaseUrl, '/client-preview/admin', 404);
+  const configuredPreviewMutation = await auxiliaryRequest(configuredPreviewBaseUrl, '/admin/api/homepage/publish', 403, {
+    method: 'POST',
+    body: '{}',
+    headers: { 'Content-Type': 'application/json' }
+  });
+  const configuredPreviewMutationData = await configuredPreviewMutation.json();
+  check(configuredPreviewMutationData.ok === false && configuredPreviewMutationData.read_only === true, 'Configured Preview did not keep the central admin write lock.');
 
   const emptyDataDir = path.join(tempRoot, 'configured-empty-data');
   const emptyUploadDir = path.join(tempRoot, 'configured-empty-uploads');

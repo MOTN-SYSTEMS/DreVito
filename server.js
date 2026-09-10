@@ -8574,6 +8574,9 @@ async function getPreviewProductionPublicPayload(locale) {
   if (!url) return null;
 
   const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'omit',
+    redirect: 'error',
     headers: { Accept: 'application/json' },
     signal: AbortSignal.timeout(8000)
   });
@@ -8583,6 +8586,338 @@ async function getPreviewProductionPublicPayload(locale) {
     throw new Error('Preview public content source is not configured.');
   }
   return sanitizeProductionPublicPayload(payload, locale);
+}
+
+const PREVIEW_ADMIN_REVIEW_BASE = '/client-preview/admin';
+
+function isVercelPreview() {
+  return process.env.VERCEL_ENV === 'preview';
+}
+
+function isPreviewAdminReviewAvailable(req) {
+  if (!isVercelPreview() || isSupabaseConfigured() || !previewProductionPublicContentUrl('cs')) return false;
+
+  const expectedHost = String(process.env.VERCEL_URL || '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/+$/, '')
+    .toLowerCase();
+  const requestHost = String(req.headers.host || '').trim().toLowerCase();
+  const localTestHost = process.env.NODE_ENV === 'test'
+    && /^(?:127\.0\.0\.1|localhost)(?::\d+)?$/.test(requestHost);
+  return Boolean(expectedHost && (requestHost === expectedHost || localTestHost));
+}
+
+function previewAdminCategory(category) {
+  return {
+    ...category,
+    is_visible: true,
+    archived_at: null
+  };
+}
+
+function previewAdminFilter(filter) {
+  return {
+    ...filter,
+    is_visible: true,
+    archived_at: null,
+    options: (Array.isArray(filter && filter.options) ? filter.options : []).map((option) => ({
+      ...option,
+      filter_id: option.filter_id || filter.id,
+      is_visible: true,
+      archived_at: null
+    }))
+  };
+}
+
+function previewAdminReviewData(payload) {
+  const productCategories = (Array.isArray(payload.product_categories) ? payload.product_categories : [])
+    .map(previewAdminCategory);
+  const blogCategories = (Array.isArray(payload.blog_categories) ? payload.blog_categories : [])
+    .map(previewAdminCategory);
+  const productFilters = (Array.isArray(payload.product_filters) ? payload.product_filters : [])
+    .map(previewAdminFilter);
+  const filterByOptionId = new Map();
+  productFilters.forEach((filter) => {
+    filter.options.forEach((option) => filterByOptionId.set(option.id, filter));
+  });
+
+  const products = (Array.isArray(payload.products) ? payload.products : []).map((product) => {
+    const categories = (Array.isArray(product.categories) ? product.categories : []).map(previewAdminCategory);
+    const filterOptions = (Array.isArray(product.filter_options) ? product.filter_options : []).map((option) => {
+      const filter = filterByOptionId.get(option.id);
+      return {
+        ...option,
+        is_visible: true,
+        archived_at: null,
+        filter: filter ? { id: filter.id, title: filter.title, slug: filter.slug } : null
+      };
+    });
+    return {
+      ...product,
+      categories,
+      category_ids: categories.map((category) => category.id),
+      filter_options: filterOptions,
+      filter_option_ids: filterOptions.map((option) => option.id),
+      is_visible: true,
+      is_published: true,
+      archived_at: null
+    };
+  });
+
+  const blogPosts = (Array.isArray(payload.blog_posts) ? payload.blog_posts : []).map((post) => {
+    const categories = (Array.isArray(post.categories) ? post.categories : []).map(previewAdminCategory);
+    return {
+      ...post,
+      categories,
+      category_ids: categories.map((category) => category.id),
+      status: 'published'
+    };
+  });
+
+  const siteContent = Object.values(payload.site_content && typeof payload.site_content === 'object'
+    ? payload.site_content
+    : {})
+    .filter((item) => item && !isHomepageReservedContentKey(item.content_key) && !isLegacyHomepageContentKey(item.content_key))
+    .map((item) => ({
+      ...item,
+      locale: payload.locale || 'cs',
+      status: 'published',
+      archived_at: null
+    }));
+
+  return {
+    productCategories,
+    products,
+    productFilters,
+    blogPosts,
+    blogCategories,
+    siteContent
+  };
+}
+
+function previewHomepageEditorState(payload) {
+  const layout = payload.homepage_layout ? normalizeHomepageLayout(payload.homepage_layout) : null;
+  const publishedRow = payload.site_content && payload.site_content[HOMEPAGE_LAYOUT_CONTENT_KEY];
+  return {
+    ok: true,
+    read_only: true,
+    locale: payload.locale || 'cs',
+    has_draft: false,
+    has_published_layout: Boolean(layout),
+    draft_revision: null,
+    draft_updated_at: null,
+    published_at: publishedRow ? publishedRow.published_at || null : null,
+    published_revision: publishedRow ? publishedRow.updated_at || null : null,
+    is_dirty: false,
+    layout: layout || defaultHomepageLayout(),
+    published_layout: layout
+  };
+}
+
+async function getPreviewAdminReviewApiPayload(pathname, locale = 'cs') {
+  const payload = await getPreviewProductionPublicPayload(locale);
+  if (!payload) return null;
+  const data = previewAdminReviewData(payload);
+
+  if (pathname === `${PREVIEW_ADMIN_REVIEW_BASE}/api/homepage`) return previewHomepageEditorState(payload);
+  if (pathname === `${PREVIEW_ADMIN_REVIEW_BASE}/api/media`) {
+    return { ...normalizeMediaDb(createEmptyMediaDb()), ok: true, read_only: true };
+  }
+  if (pathname === `${PREVIEW_ADMIN_REVIEW_BASE}/api/site-content`) {
+    return { ok: true, read_only: true, contents: data.siteContent };
+  }
+  if (pathname === `${PREVIEW_ADMIN_REVIEW_BASE}/api/product-categories`) {
+    return { ok: true, read_only: true, categories: data.productCategories };
+  }
+  if (pathname === `${PREVIEW_ADMIN_REVIEW_BASE}/api/products`) {
+    return {
+      ok: true,
+      read_only: true,
+      products: data.products,
+      categories: data.productCategories,
+      filters: data.productFilters
+    };
+  }
+  if (pathname === `${PREVIEW_ADMIN_REVIEW_BASE}/api/product-filters`) {
+    return { ok: true, read_only: true, filters: data.productFilters };
+  }
+  if (pathname === `${PREVIEW_ADMIN_REVIEW_BASE}/api/blog-posts`) {
+    return { ok: true, read_only: true, posts: data.blogPosts, categories: data.blogCategories };
+  }
+  if (pathname === `${PREVIEW_ADMIN_REVIEW_BASE}/api/blog-categories`) {
+    return { ok: true, read_only: true, categories: data.blogCategories };
+  }
+  return null;
+}
+
+function previewAdminReviewPage(pathname) {
+  const relativePath = pathname.slice(PREVIEW_ADMIN_REVIEW_BASE.length).replace(/\/+$/, '') || '/';
+  const reviewSession = { email: 'client-review@preview.invalid', review_only: true };
+  if (relativePath === '/') return dashboardPage(reviewSession);
+  if (relativePath === '/archive') return archiveAdminPage(reviewSession);
+  if (relativePath === '/media') {
+    return adminLayout('Obrázky', `
+      ${adminMasthead(reviewSession)}
+      <div class="content">
+        <h1>Obrázky se upravují přímo u obsahu</h1>
+        <p>Starý samostatný správce médií byl vypnutý, protože mohl uložit obrázek bez změny veřejného webu. Vyberte místo, kde má být obrázek použit.</p>
+        <div class="admin-tools">
+          <a class="admin-tool" href="/admin/homepage"><span>Homepage</span><strong>Domovská stránka</strong><p>Úvodní fotografie a obrázky obsahových bloků.</p></a>
+          <a class="admin-tool" href="/admin/product-categories"><span>Katalog</span><strong>Kategorie</strong><p>Obrázek prezentace konkrétní kategorie.</p></a>
+          <a class="admin-tool" href="/admin/products"><span>Katalog</span><strong>Výrobky</strong><p>Fotografie uložené u konkrétního výrobku.</p></a>
+          <a class="admin-tool" href="/admin/blog-posts"><span>Blog</span><strong>Články</strong><p>Fotografie uložené u konkrétního článku.</p></a>
+        </div>
+      </div>
+    `);
+  }
+  if (relativePath === '/homepage' || relativePath === '/site-content') return homepageEditorPage(reviewSession);
+  if (relativePath === '/product-categories') return productCategoriesAdminPage(reviewSession);
+  if (relativePath === '/product-filters') return productFiltersAdminPage(reviewSession);
+  if (relativePath === '/products') return productsAdminPage(reviewSession);
+  if (relativePath === '/blog-categories') return blogCategoriesAdminPage(reviewSession);
+  if (relativePath === '/blog-posts') return blogPostsAdminPage(reviewSession);
+  return null;
+}
+
+function renderPreviewAdminReview(html) {
+  const routed = html.replaceAll('/admin', PREVIEW_ADMIN_REVIEW_BASE);
+  const reviewCss = `
+    .preview-review-banner {
+      position: relative;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 11px 18px;
+      background: #f4cf72;
+      color: #3d2b1f;
+      font-size: .82rem;
+      font-weight: 900;
+      letter-spacing: .055em;
+      text-align: center;
+      text-transform: uppercase;
+    }
+    .preview-review-banner span { font-weight: 700; letter-spacing: 0; text-transform: none; }
+    body.preview-admin-review :is(button, input, select, textarea):disabled { cursor: not-allowed !important; opacity: .62 !important; }
+    @media (max-width: 640px) {
+      .preview-review-banner { align-items: flex-start; flex-direction: column; gap: 2px; }
+    }
+  `;
+  const reviewBanner = `<div class="preview-review-banner" role="status">Client preview · Read only <span>Aktuální veřejná data, ukládání je bezpečně vypnuté.</span></div>`;
+  const reviewLock = `
+  <script>
+  (function() {
+    function isInspectionControl(control) {
+      return control.matches('[data-action="edit"], [data-edit-filter], [data-edit-option], #homepage-retry');
+    }
+    function lockControls(root) {
+      root.querySelectorAll('button, input, select, textarea').forEach(function(control) {
+        if (isInspectionControl(control)) return;
+        if (!control.disabled) control.disabled = true;
+        if (control.getAttribute('aria-disabled') !== 'true') control.setAttribute('aria-disabled', 'true');
+      });
+      root.querySelectorAll('[draggable]').forEach(function(item) {
+        if (item.getAttribute('draggable') !== 'false') item.setAttribute('draggable', 'false');
+      });
+    }
+    document.addEventListener('submit', function(event) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+    document.addEventListener('click', function(event) {
+      var control = event.target.closest('button, input, select, textarea');
+      if (control && !isInspectionControl(control)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    }, true);
+    ['dragstart', 'input', 'change'].forEach(function(eventName) {
+      document.addEventListener(eventName, function(event) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }, true);
+    });
+    new MutationObserver(function() { lockControls(document); }).observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['disabled', 'draggable']
+    });
+    lockControls(document);
+  })();
+  </script>`;
+
+  return routed
+    .replace('<meta name="viewport" content="width=device-width, initial-scale=1.0">', '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <meta name="robots" content="noindex, nofollow">')
+    .replace('</style>', `${reviewCss}\n  </style>`)
+    .replace('<body>', `<body class="preview-admin-review">\n  ${reviewBanner}`)
+    .replace('</body>', `${reviewLock}\n</body>`);
+}
+
+function sendPreviewReadOnly(res) {
+  sendJson(res, 403, {
+    ok: false,
+    read_only: true,
+    error: 'Tento klientský náhled je pouze pro čtení. Ukládání je vypnuté.'
+  }, {
+    'Cache-Control': 'no-store',
+    'X-Robots-Tag': 'noindex, nofollow, noarchive',
+    'Referrer-Policy': 'no-referrer'
+  });
+}
+
+async function handlePreviewAdminReview(req, res, url) {
+  if (!isPreviewAdminReviewAvailable(req)) {
+    send(res, 404, 'Not found', { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow, noarchive', 'Referrer-Policy': 'no-referrer' });
+    return;
+  }
+  if (!['GET', 'HEAD'].includes(req.method)) {
+    sendPreviewReadOnly(res);
+    return;
+  }
+
+  if (url.pathname.startsWith(`${PREVIEW_ADMIN_REVIEW_BASE}/api/`)) {
+    try {
+      const data = await getPreviewAdminReviewApiPayload(
+        url.pathname,
+        (url.searchParams.get('locale') || 'cs').trim().toLowerCase()
+      );
+      if (!data) {
+        sendJson(res, 404, { ok: false, read_only: true, error: 'Review data endpoint not found.' }, {
+          'Cache-Control': 'no-store',
+          'X-Robots-Tag': 'noindex, nofollow, noarchive',
+          'Referrer-Policy': 'no-referrer'
+        });
+        return;
+      }
+      sendJson(res, 200, data, {
+        'Cache-Control': 'no-store',
+        'X-Robots-Tag': 'noindex, nofollow, noarchive',
+        'Referrer-Policy': 'no-referrer'
+      });
+    } catch (error) {
+      console.error(error);
+      sendJson(res, 503, { ok: false, read_only: true, error: 'Review data could not be loaded.' }, {
+        'Cache-Control': 'no-store',
+        'X-Robots-Tag': 'noindex, nofollow, noarchive',
+        'Referrer-Policy': 'no-referrer'
+      });
+    }
+    return;
+  }
+
+  const page = previewAdminReviewPage(url.pathname);
+  if (!page) {
+    send(res, 404, 'Not found', { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow, noarchive', 'Referrer-Policy': 'no-referrer' });
+    return;
+  }
+  send(res, 200, req.method === 'HEAD' ? '' : renderPreviewAdminReview(page), {
+    'Cache-Control': 'no-store',
+    'X-Robots-Tag': 'noindex, nofollow, noarchive',
+    'Referrer-Policy': 'no-referrer'
+  });
 }
 
 async function getPublicCmsPayload(locale = 'cs') {
@@ -10063,6 +10398,10 @@ function isPublicProductsRoute(pathname) {
 }
 
 async function handleAdmin(req, res, url) {
+  if (isVercelPreview() && url.pathname.startsWith('/admin/api/') && !['GET', 'HEAD'].includes(req.method)) {
+    sendPreviewReadOnly(res);
+    return;
+  }
   const session = getSession(req);
 
   if (url.pathname === '/admin/login' && req.method === 'GET') {
@@ -10767,6 +11106,14 @@ function handleRequest(req, res) {
           'Retry-After': '60'
         });
       });
+    return;
+  }
+
+  if (url.pathname === PREVIEW_ADMIN_REVIEW_BASE || url.pathname.startsWith(`${PREVIEW_ADMIN_REVIEW_BASE}/`)) {
+    handlePreviewAdminReview(req, res, url).catch((error) => {
+      console.error(error);
+      send(res, 500, 'Internal server error', { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow, noarchive', 'Referrer-Policy': 'no-referrer' });
+    });
     return;
   }
 
