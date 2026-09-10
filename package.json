@@ -5,9 +5,17 @@
   "description": "Drevito static website with protected admin area.",
   "scripts": {
     "start": "node server.js",
-    "test:smoke": "node scripts/smoke-test.mjs"
+    "test": "npm run test:contracts && npm run test:smoke",
+    "test:contracts": "node scripts/correction-contract-test.mjs",
+    "test:concurrency": "node scripts/category-concurrency-test.mjs",
+    "test:migration": "node scripts/migration-integration-test.mjs && node scripts/category-concurrency-test.mjs",
+    "test:smoke": "node scripts/smoke-test.mjs",
+    "test:supabase-app": "node scripts/supabase-app-test.mjs"
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "sharp": "0.35.4"
   }
 }

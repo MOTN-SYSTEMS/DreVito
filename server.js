@@ -3,6 +3,7 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
+const sharp = require('sharp');
 const { URL } = require('url');
 
 const ROOT_DIR = __dirname;
@@ -14,7 +15,10 @@ const DATA_DIR = process.env.DREVITO_DATA_DIR || path.join(RUNTIME_STORAGE_ROOT,
 const UPLOAD_DIR = process.env.DREVITO_UPLOAD_DIR || path.join(RUNTIME_STORAGE_ROOT, 'uploads');
 const MEDIA_DB_PATH = path.join(DATA_DIR, 'media-db.json');
 const CMS_DB_PATH = path.join(DATA_DIR, 'cms-db.json');
-const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES || 10 * 1024 * 1024);
+// Keep the complete multipart request comfortably below Vercel's 4.5 MB body
+// limit. Browser-side processing targets 3 MB image files, leaving room for
+// multipart headers and platform-specific request framing.
+const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES || 3.5 * 1024 * 1024);
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_ALLOWED_EMAILS = [
@@ -60,6 +64,35 @@ const IMAGE_EXTENSIONS = {
   'image/webp': '.webp'
 };
 
+const PUBLIC_STATIC_FILES = new Set([
+  'index.html',
+  'image-upload-tools.js',
+  'autor.JPG',
+  'cajne-stolicky.JPG',
+  'custom-service.jpg',
+  'custom.JPG',
+  'dekorace-zena.JPG',
+  'dekoracni-tabulka.JPG',
+  'drevito-logo-transparent-black.png',
+  'drevito-logo-transparent.png',
+  'drevito-tab-logo-20260622.ico',
+  'drevito-tab-logo-20260622.png',
+  'favicon-16x16.png',
+  'favicon-32x32.png',
+  'favicon.ico',
+  'favicon.png',
+  'hracka-auticko.JPG',
+  'krabicka.JPG',
+  'kun-dekorace.JPG',
+  'logo.jpg',
+  'main.JPG',
+  'prods.jpg',
+  'stojan-na-telefon.JPG'
+]);
+
+const CONFIRMED_HERO_TITLE = 'Dřevito – když se umění snoubí s citem k přirozenosti';
+const CONFIRMED_AUTHOR_TITLE = 'Příběh za značkou – Vít Thorio, tvůrce Dřevito';
+
 const DEFAULT_SITE_IMAGE_TARGETS = [
   { key: 'hero', label: 'Úvodní fotka', url: '/main.JPG', alt: 'Dřevito dřevěné výrobky' },
   { key: 'about', label: 'Sekce o řemesle', url: '/prods.jpg', alt: 'Řemeslo s tradicí' },
@@ -70,7 +103,7 @@ const DEFAULT_SITE_IMAGE_TARGETS = [
 ];
 
 const DEFAULT_PRODUCT_IMAGE_TARGETS = [
-  { key: 'P00002', label: 'Čajné stolicky', url: '/cajne-stolicky.JPG', alt: 'Čajné stolicky' },
+  { key: 'P00002', label: 'Čajový stolek', url: '/cajne-stolicky.JPG', alt: 'Čajový stolek' },
   { key: 'P00016', label: 'Dekorační tabulka', url: '/dekoracni-tabulka.JPG', alt: 'Dekorační tabulka' },
   { key: 'P00004', label: 'Krabička', url: '/krabicka.JPG', alt: 'Krabička' },
   { key: 'P00020', label: 'Kůň', url: '/kun-dekorace.JPG', alt: 'Dřevěná dekorace koně' },
@@ -174,7 +207,7 @@ const DEFAULT_CMS_PRODUCTS = [
     id: '00000002-0000-4000-8000-000000000002',
     legacy_id: 'P00002',
     slug: 'cajne-stolicky',
-    title: 'Čajné stolicky',
+    title: 'Čajový stolek',
     short_description: 'Dřevěný čajový stoleček s vyřezávaným motivem.',
     description: 'Dřevěný čajový stoleček s vyřezávaným motivem.',
     price: 1790,
@@ -313,12 +346,14 @@ const BLOG_ROUTE_ALIASES = {
 
 const TARGET_TYPES = {
   site_sections: 'Sekce webu',
+  product_categories: 'Kategorie výrobků',
   products: 'Výrobky',
   blog_posts: 'Blog'
 };
 
 const MEDIA_BUCKETS = {
   site_sections: 'site-media',
+  product_categories: 'product-images',
   products: 'product-images',
   blog_posts: 'blog-images'
 };
@@ -329,6 +364,23 @@ const HOMEPAGE_RESERVED_CONTENT_KEYS = new Set([
   HOMEPAGE_LAYOUT_CONTENT_KEY,
   HOMEPAGE_LAYOUT_DRAFT_CONTENT_KEY
 ]);
+// These rows are read only as a one-way compatibility bridge when no canonical
+// homepage layout has ever been published. New edits must go through the fixed
+// block homepage editor so a successful admin write always affects the public
+// destination the client expects.
+const HOMEPAGE_LEGACY_CONTENT_KEYS = new Set([
+  'homepage.hero',
+  'homepage.hero.image',
+  'about.text',
+  'about.image',
+  'craft.philosophy',
+  'author.image',
+  'contact.text',
+  'products.title',
+  'products.intro',
+  'blog.title',
+  'blog.intro'
+]);
 const HOMEPAGE_LAYOUT_VERSION = 1;
 const HOMEPAGE_MAX_BLOCKS = 36;
 const HOMEPAGE_FIXED_BLOCKS = [
@@ -338,8 +390,8 @@ const HOMEPAGE_FIXED_BLOCKS = [
     label: 'Úvodní obrazovka',
     visible: true,
     content: {
-      eyebrow: 'Rodinná dílna · Dolní Ředice',
-      title: 'Dřevito — dřevěné výrobky zhotovené srdcem',
+      eyebrow: '',
+      title: CONFIRMED_HERO_TITLE,
       body: 'Ruční výroba z masivního dřeva. Každý kus je originál.',
       image: { url: '/main.JPG', alt: 'Dřevito dřevěné výrobky', media_id: '' },
       primary_label: 'Prohlédnout výrobky',
@@ -386,7 +438,7 @@ const HOMEPAGE_FIXED_BLOCKS = [
     label: 'Příběh za značkou',
     visible: true,
     content: {
-      title: 'Příběh za značkou',
+      title: CONFIRMED_AUTHOR_TITLE,
       lead: 'Stromy jsou mým životem. Sázím je, kácám je, osobně je znám.',
       body: 'Přinášet krásu dřeva do lidských domovů — udržitelně a s respektem k přírodě — to je to, co mě definuje. Dílna na rodinném statku je splněný téměř dvacetiletý sen.\n\nDnes mám funkční pilu a truhlářskou dílnu, díky které zvládnu celý proces — od pokácení stromu až po dokončení nábytku vlastníma rukama. Netvořím ze dřeva, které kupuji kdovíkde. Tvořím ze stromů, které jsem znal a kterým jsem osobně poděkoval za jejich život.\n\nPráce se dřevem je pro mě meditace a vnitřní naplnění. Jsem milovníkem organických tvarů — příroda je mou učitelkou. Zřídka používám rovné hrany, pokud to zákazník přímo nepožaduje.',
       signature: '— tvůrce Dřevito',
@@ -544,6 +596,10 @@ function isSupabaseConfigured() {
   return Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 }
 
+function isCmsExpected() {
+  return process.env.NODE_ENV === 'production' || process.env.DREVITO_STATIC_FALLBACK !== '1';
+}
+
 function sessionCookie(value, req) {
   const secure = isHttps(req) || process.env.NODE_ENV === 'production';
   return [
@@ -697,6 +753,7 @@ function createEmptyMediaDb() {
     media: [],
     targets: {
       site_sections: {},
+      product_categories: {},
       products: {},
       blog_posts: {}
     }
@@ -724,6 +781,7 @@ function normalizeMediaDb(db) {
     ? normalized.targets
     : {};
   normalized.targets.site_sections = normalized.targets.site_sections || {};
+  normalized.targets.product_categories = normalized.targets.product_categories || {};
   normalized.targets.products = normalized.targets.products || {};
   normalized.targets.blog_posts = normalized.targets.blog_posts || {};
 
@@ -1004,7 +1062,7 @@ function updateLocalRow(row, input) {
   return row;
 }
 
-async function readSupabaseMediaDb() {
+async function readSupabaseLegacyMediaDb() {
   const db = normalizeMediaDb(createEmptyMediaDb());
   const rows = await supabaseRequest('media', {
     query: {
@@ -1045,13 +1103,14 @@ async function readSupabaseMediaDb() {
 }
 
 async function getMediaDb() {
-  return isSupabaseConfigured() ? readSupabaseMediaDb() : readMediaDb();
+  return isSupabaseConfigured() ? readSupabaseLegacyMediaDb() : readMediaDb();
 }
 
 async function getPublicMediaTargets() {
   const db = await getMediaDb();
   return {
     site_sections: db.targets.site_sections,
+    product_categories: db.targets.product_categories,
     products: db.targets.products,
     blog_posts: db.targets.blog_posts
   };
@@ -1154,20 +1213,38 @@ function updateImageOrdering(images) {
   });
 }
 
+function requestTooLargeError() {
+  const error = new Error('Soubor je příliš velký. Fotku zmenšete a zkuste nahrání znovu.');
+  error.statusCode = 413;
+  return error;
+}
+
 function getRawBody(req, maxBytes = MAX_UPLOAD_BYTES) {
   return new Promise((resolve, reject) => {
+    const declaredLength = Number(req.headers['content-length'] || 0);
+    if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+      req.resume();
+      reject(requestTooLargeError());
+      return;
+    }
+
     const chunks = [];
     let size = 0;
+    let tooLarge = false;
     req.on('data', (chunk) => {
+      if (tooLarge) return;
       size += chunk.length;
       if (size > maxBytes) {
-        reject(new Error('Soubor je příliš velký.'));
-        req.destroy();
+        tooLarge = true;
+        chunks.length = 0;
         return;
       }
       chunks.push(chunk);
     });
-    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('end', () => {
+      if (tooLarge) reject(requestTooLargeError());
+      else resolve(Buffer.concat(chunks));
+    });
     req.on('error', reject);
   });
 }
@@ -2349,6 +2426,59 @@ function adminLayout(title, content) {
       background: #fbf2e6;
       box-shadow: 0 0 0 3px rgba(182, 120, 66, 0.12);
     }
+    .category-image-editor {
+      display: grid;
+      gap: 12px;
+      margin: 0;
+      padding: 16px;
+      border: 1px solid rgba(43, 33, 24, 0.11);
+      border-radius: 14px;
+      background: rgba(222, 210, 193, 0.2);
+    }
+    .category-image-editor legend {
+      padding: 0 6px;
+      font-weight: 700;
+    }
+    .category-image-preview {
+      display: grid;
+      place-items: center;
+      min-height: 150px;
+      overflow: hidden;
+      border: 1px dashed rgba(43, 33, 24, 0.2);
+      border-radius: 12px;
+      background: #fffdf9;
+      color: var(--muted);
+      text-align: center;
+    }
+    .category-image-preview img {
+      width: 100%;
+      max-height: 240px;
+      object-fit: cover;
+    }
+    .category-tree-group {
+      padding: 12px;
+      border: 1px solid rgba(43, 33, 24, 0.1);
+      border-radius: 17px;
+      background: rgba(255, 253, 249, 0.72);
+    }
+    .category-tree-group + .category-tree-group { margin-top: 14px; }
+    .category-tree-children {
+      position: relative;
+      display: grid;
+      gap: 10px;
+      margin: 8px 0 0 36px;
+      padding-left: 20px;
+      border-left: 2px solid rgba(182, 120, 66, 0.5);
+    }
+    .category-tree-children .category-row::before {
+      content: '';
+      position: absolute;
+      left: -21px;
+      top: 34px;
+      width: 17px;
+      border-top: 2px solid rgba(182, 120, 66, 0.5);
+    }
+    .category-tree-children .category-row { position: relative; }
     .filter-settings {
       padding: 19px;
       background: rgba(222, 210, 193, 0.25);
@@ -2437,6 +2567,8 @@ function adminLayout(title, content) {
       .product-thumb,
       .blog-thumb { width: 100%; max-width: none; aspect-ratio: 16 / 9; }
       .actions .button { width: 100%; }
+      .category-tree-children { margin-left: 12px; padding-left: 14px; }
+      .category-tree-children .category-row::before { left: -15px; width: 11px; }
     }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
@@ -2463,6 +2595,7 @@ function adminLayout(title, content) {
     });
   })();
   </script>
+  <script src="/image-upload-tools.js"></script>
 </body>
 </html>`.replace('<strong>Dřevito</strong>', '<strong>Dřevito admin panel</strong>');
 }
@@ -2684,6 +2817,7 @@ function mediaAdminPage(session) {
 
       <div class="media-tabs" role="tablist" aria-label="Typy obrázků">
         <button class="media-tab active" type="button" data-tab="site_sections">Sekce webu</button>
+        <button class="media-tab" type="button" data-tab="product_categories">Kategorie výrobků</button>
         <button class="media-tab" type="button" data-tab="products">Výrobky</button>
         <button class="media-tab" type="button" data-tab="blog_posts">Blog</button>
       </div>
@@ -2694,6 +2828,7 @@ function mediaAdminPage(session) {
             Typ
             <select name="targetType" id="target-type">
               <option value="site_sections">Sekce webu</option>
+              <option value="product_categories">Kategorie výrobků</option>
               <option value="products">Výrobky</option>
               <option value="blog_posts">Blog</option>
             </select>
@@ -2736,6 +2871,7 @@ function mediaAdminPage(session) {
       var activeType = 'site_sections';
       var labels = {
         site_sections: 'Sekce webu',
+        product_categories: 'Kategorie výrobků',
         products: 'Výrobky',
         blog_posts: 'Blog'
       };
@@ -2840,9 +2976,15 @@ function mediaAdminPage(session) {
 
       async function upload(form) {
         setStatus('Ukládám...');
+        var formData = new FormData(form);
+        var file = formData.get('image');
+        if (file && file.size) {
+          file = await window.drevitoPrepareAdminImage(file);
+          formData.set('image', file, file.name);
+        }
         var response = await fetch('/admin/api/media/upload', {
           method: 'POST',
-          body: new FormData(form)
+          body: formData
         });
         var data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Nahrání se nepodařilo.');
@@ -3451,6 +3593,7 @@ function siteContentAdminPage(session) {
         var fileInput = targetMode === 'gallery' ? galleryUploadInput : imageUploadInput;
         var file = fileInput.files && fileInput.files[0];
         if (!file) throw new Error('Vyberte fotku k nahrání.');
+        file = await window.drevitoPrepareAdminImage(file);
         var body = new FormData();
         body.append('image', file);
         body.append('targetLabel', labelInput.value.trim() || keyInput.value.trim() || 'Sekce webu');
@@ -3761,10 +3904,16 @@ function homepageEditorPage(session) {
           <span class="homepage-save-status" id="homepage-save-status" aria-live="polite">Načítám…</span>
           <a class="button button--ghost" href="/" target="_blank" rel="noopener">Živý web</a>
           <button class="button button--secondary" id="homepage-reset" type="button" disabled>Vrátit živou verzi</button>
-          <button class="button button--secondary" id="homepage-save" type="button" disabled>Uložit koncept</button>
+          <button class="button button--secondary" id="homepage-save" type="button" disabled>Uložit jen koncept</button>
           <button class="button" id="homepage-publish" type="button" disabled>Publikovat na web</button>
         </div>
       </div>
+
+      <aside class="admin-guide" aria-label="Jak zveřejnit změny" style="margin-top:-6px">
+        <strong>Co uvidí návštěvníci?</strong>
+        <p>„Uložit jen koncept“ ponechá změny pouze v administraci. Až tlačítko <strong>Publikovat na web</strong> uloží stejnou verzi jako živou a změny se díky vypnuté veřejné cache projeví ihned.</p>
+        <p>Editor dovoluje měnit texty a fotografie jen uvnitř připravených bloků; základní vzhled, typografie a povinný úvod zůstávají chráněné.</p>
+      </aside>
 
       <div class="homepage-editor__message" id="homepage-message" hidden aria-live="assertive"></div>
       <button class="button button--secondary homepage-editor__retry" id="homepage-retry" type="button" hidden>Načíst editor znovu</button>
@@ -4151,15 +4300,18 @@ function homepageEditorPage(session) {
         if (!block) return;
         var uploadInput = event.target;
         var blockId = block.id;
-        var form = new FormData();
-        form.append('image', uploadInput.files[0]);
-        form.append('targetKey', 'homepage-' + block.id + '-' + uploadSlot.replace('.', '-'));
-        form.append('targetLabel', fixedLabels[block.id] || blockTitle(block));
         var currentImage = uploadSlot.indexOf('images.') === 0 ? block.content.images[Number(uploadSlot.split('.')[1])] : block.content.image;
-        form.append('alt', (currentImage && currentImage.alt) || blockTitle(block));
         setBusy(true);
         setStatus('Nahrávám fotografii…', 'is-dirty');
-        fetch('/admin/api/site-content/photo-upload', { method: 'POST', body: form, headers: { Accept: 'application/json' } }).then(function(response) {
+        window.drevitoPrepareAdminImage(uploadInput.files[0]).then(function(file) {
+          var form = new FormData();
+          form.append('image', file);
+          form.append('targetKey', 'homepage-' + block.id + '-' + uploadSlot.replace('.', '-'));
+          form.append('targetLabel', fixedLabels[block.id] || blockTitle(block));
+          form.append('alt', (currentImage && currentImage.alt) || blockTitle(block));
+          form.append('editorContext', 'homepage-layout');
+          return fetch('/admin/api/site-content/photo-upload', { method: 'POST', body: form, headers: { Accept: 'application/json' } });
+        }).then(function(response) {
           return response.json().then(function(data) { if (!response.ok) throw new Error(data.error || 'Fotografii se nepodařilo nahrát.'); return data; });
         }).then(function(data) {
           var currentBlock = blockById(blockId);
@@ -4269,6 +4421,10 @@ function productCategoriesAdminPage(session) {
               <input id="category-title" name="title" required autocomplete="off">
             </label>
             <input id="category-slug" name="slug" type="hidden" required autocomplete="off" pattern="[a-z0-9][a-z0-9-]*">
+            <label>
+              Popis kategorie
+              <textarea id="category-description" name="description" placeholder="Krátký text, který se zobrazí u vybrané kategorie na webu."></textarea>
+            </label>
             <fieldset class="category-type-options">
               <legend>Typ kategorie</legend>
               <label class="category-type-option">
@@ -4295,6 +4451,20 @@ function productCategoriesAdminPage(session) {
                 Zobrazit
               </span>
             </label>
+            <fieldset class="category-image-editor">
+              <legend>Obrázek kategorie</legend>
+              <div class="category-image-preview" id="category-image-preview">Zatím bez obrázku</div>
+              <input id="category-image-upload" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+              <div class="actions" style="margin-top:0;justify-content:flex-start">
+                <button class="button button--secondary button--small" id="category-image-upload-button" type="button">Nahrát / změnit</button>
+                <button class="button button--danger button--small" id="category-image-remove" type="button" hidden>Odebrat</button>
+              </div>
+              <label>
+                Popis obrázku pro čtečky
+                <input id="category-image-alt-visible" autocomplete="off" placeholder="Např. Čajový stolek z masivu">
+              </label>
+              <span class="product-meta" id="category-image-status">Po nahrání kategorii uložte.</span>
+            </fieldset>
             <input id="category-image-url" name="image_url" type="hidden">
             <input id="category-image-alt" name="image_alt" type="hidden">
             <input id="category-image-media-id" name="image_media_id" type="hidden">
@@ -4310,6 +4480,7 @@ function productCategoriesAdminPage(session) {
             <h2>Seznam kategorií</h2>
             <button class="button button--secondary button--small" id="category-reload" type="button">Načíst znovu</button>
           </div>
+          <p class="product-meta" style="margin-top:8px">Podkategorie jsou vždy zobrazené přímo pod svou hlavní kategorií.</p>
           <div id="categories-root" class="empty-state">Načítám kategorie...</div>
         </section>
       </div>
@@ -4328,6 +4499,7 @@ function productCategoriesAdminPage(session) {
       var idInput = document.getElementById('category-id');
       var titleInput = document.getElementById('category-title');
       var slugInput = document.getElementById('category-slug');
+      var descriptionInput = document.getElementById('category-description');
       var typeInputs = Array.from(document.querySelectorAll('input[name="category_type"]'));
       var parentField = document.getElementById('category-parent-field');
       var parentInput = document.getElementById('category-parent-id');
@@ -4337,6 +4509,13 @@ function productCategoriesAdminPage(session) {
       var imageUrlInput = document.getElementById('category-image-url');
       var imageAltInput = document.getElementById('category-image-alt');
       var imageMediaIdInput = document.getElementById('category-image-media-id');
+      var imageAltVisibleInput = document.getElementById('category-image-alt-visible');
+      var imageUploadInput = document.getElementById('category-image-upload');
+      var imagePreview = document.getElementById('category-image-preview');
+      var imageStatus = document.getElementById('category-image-status');
+      var imageRemoveButton = document.getElementById('category-image-remove');
+      var categoryBusy = false;
+      var editSession = 0;
 
       function escapeHtml(value) {
         return String(value || '').replace(/[&<>"']/g, function(char) {
@@ -4363,6 +4542,16 @@ function productCategoriesAdminPage(session) {
         return category && category.image && typeof category.image === 'object' ? category.image : {};
       }
 
+      function renderImagePreview() {
+        var url = imageUrlInput.value.trim();
+        var alt = imageAltVisibleInput.value.trim() || titleInput.value.trim();
+        imageAltInput.value = imageAltVisibleInput.value.trim();
+        imagePreview.innerHTML = url
+          ? '<img src="' + escapeHtml(url) + '" alt="' + escapeHtml(alt) + '">'
+          : 'Zatím bez obrázku';
+        imageRemoveButton.hidden = !url && !imageMediaIdInput.value.trim();
+      }
+
       function payloadFromCategory(category, overrides) {
         var image = imageFromCategory(category);
         return Object.assign({
@@ -4379,13 +4568,12 @@ function productCategoriesAdminPage(session) {
       }
 
       function currentPayload() {
-        var existing = categories.find(function(category) { return category.id === editedId; });
         var isSubcategory = typeInputs.some(function(input) { return input.checked && input.value === 'subcategory'; });
         return {
           title: titleInput.value.trim(),
           slug: slugInput.value.trim().toLowerCase(),
           parent_id: isSubcategory ? parentInput.value : '',
-          description: existing && existing.description ? existing.description : '',
+          description: descriptionInput.value.trim(),
           sort_order: sortOrderInput.value,
           is_visible: visibleInput.checked,
           image_url: imageUrlInput.value.trim(),
@@ -4395,6 +4583,7 @@ function productCategoriesAdminPage(session) {
       }
 
       function resetForm() {
+        editSession += 1;
         editedId = '';
         slugTouched = false;
         formTitle.textContent = 'Nová kategorie';
@@ -4402,6 +4591,14 @@ function productCategoriesAdminPage(session) {
         form.reset();
         sortOrderInput.value = '0';
         visibleInput.checked = true;
+        imageUrlInput.value = '';
+        imageAltInput.value = '';
+        imageMediaIdInput.value = '';
+        imageAltVisibleInput.value = '';
+        imageUploadInput.value = '';
+        imageStatus.textContent = 'Po nahrání kategorii uložte.';
+        typeInputs.forEach(function(input) { input.disabled = false; });
+        renderImagePreview();
         renderParentOptions('');
         setCategoryType('main');
         titleInput.focus();
@@ -4443,6 +4640,7 @@ function productCategoriesAdminPage(session) {
       }
 
       function editCategory(category) {
+        editSession += 1;
         var image = imageFromCategory(category);
         editedId = category.id;
         slugTouched = true;
@@ -4450,6 +4648,7 @@ function productCategoriesAdminPage(session) {
         idInput.value = category.id;
         titleInput.value = category.title || '';
         slugInput.value = category.slug || '';
+        descriptionInput.value = category.description || '';
         renderParentOptions(category.parent_id || '');
         setCategoryType(category.parent_id ? 'subcategory' : 'main');
         if (category.parent_id) parentInput.value = category.parent_id;
@@ -4459,6 +4658,16 @@ function productCategoriesAdminPage(session) {
         imageUrlInput.value = image.url || '';
         imageAltInput.value = image.alt || '';
         imageMediaIdInput.value = image.media_id || '';
+        imageAltVisibleInput.value = image.alt || '';
+        imageStatus.textContent = image.url ? 'Aktuální obrázek kategorie.' : 'Po nahrání kategorii uložte.';
+        var hasChildren = categories.some(function(item) { return item.parent_id === category.id; });
+        typeInputs.forEach(function(input) {
+          input.disabled = input.value === 'subcategory' && hasChildren && !category.parent_id;
+        });
+        if (hasChildren && !category.parent_id) {
+          parentHelp.textContent = 'Tato hlavní kategorie obsahuje podkategorie. Před změnou její úrovně je nejprve přesuňte.';
+        }
+        renderImagePreview();
         titleInput.focus();
       }
 
@@ -4482,15 +4691,7 @@ function productCategoriesAdminPage(session) {
         });
       }
 
-      function render() {
-        if (!categories.length) {
-          root.className = 'empty-state';
-          root.innerHTML = 'Zatím tu nejsou žádné kategorie.';
-          return;
-        }
-
-        root.className = '';
-        root.innerHTML = categories.map(function(category) {
+      function renderCategoryRow(category, hierarchyProblem) {
           var image = imageFromCategory(category);
           var thumb = image.url
             ? '<img class="category-thumb" src="' + escapeHtml(image.url) + '" alt="' + escapeHtml(image.alt || category.title) + '">'
@@ -4501,11 +4702,12 @@ function productCategoriesAdminPage(session) {
           var productNames = assignedProducts.slice(0, 5).map(function(product) { return product.title; }).join(', ');
           var actionHtml = '<button class="button button--secondary button--small" type="button" data-action="toggle" data-id="' + escapeHtml(category.id) + '">' + toggleLabel + '</button>';
 
-          return '<article class="category-row"' + (parentTitle ? ' style="margin-left:24px;border-left:4px solid #c9a96e;"' : '') + '>' +
+          return '<article class="category-row">' +
             thumb +
             '<div class="category-main">' +
               '<div class="category-titleline"><strong>' + escapeHtml(category.title) + '</strong>' + statusBadges(category) + '</div>' +
               '<div class="category-meta">' + (parentTitle ? 'Podkategorie v: ' + escapeHtml(parentTitle) : 'Hlavní kategorie') + '</div>' +
+              (hierarchyProblem ? '<div class="alert" style="margin:8px 0 0">' + escapeHtml(hierarchyProblem) + '</div>' : '') +
               '<div class="category-meta"><strong>' + assignedProducts.length + '</strong> výrobků' + (productNames ? ': ' + escapeHtml(productNames) + (assignedProducts.length > 5 ? '…' : '') : '') + '</div>' +
               '<div class="category-actions">' +
                 '<button class="button button--small" type="button" data-action="edit" data-id="' + escapeHtml(category.id) + '">Upravit</button>' +
@@ -4513,7 +4715,64 @@ function productCategoriesAdminPage(session) {
               '</div>' +
             '</div>' +
           '</article>';
-        }).join('');
+      }
+
+      function render() {
+        if (!categories.length) {
+          root.className = 'empty-state';
+          root.innerHTML = 'Zatím tu nejsou žádné kategorie.';
+          return;
+        }
+
+        var categoryById = new Map(categories.map(function(category) { return [category.id, category]; }));
+        var parents = categories.filter(function(category) { return !category.parent_id; });
+        var renderedIds = new Set(parents.map(function(category) { return category.id; }));
+        function hasChildren(categoryId) {
+          return categories.some(function(category) { return category.parent_id === categoryId; });
+        }
+        function hierarchyProblem(category) {
+          if (category.parent_id === category.id) return 'Kategorie odkazuje sama na sebe. Změňte ji na hlavní kategorii nebo vyberte jiného rodiče.';
+          var parent = categoryById.get(category.parent_id);
+          if (!parent) return 'Nadřazená kategorie chybí nebo je archivovaná. Vyberte dostupnou hlavní kategorii.';
+          var seen = new Set([category.id]);
+          var cursor = parent;
+          while (cursor && cursor.parent_id) {
+            if (seen.has(cursor.id)) return 'Kategorie je součástí cyklu. Změňte ji na hlavní kategorii.';
+            seen.add(cursor.id);
+            cursor = categoryById.get(cursor.parent_id);
+          }
+          if (parent.parent_id) return 'Kategorie je ve třetí nebo hlubší úrovni. Vyberte přímo hlavní kategorii.';
+          if (hasChildren(category.id)) return 'Podkategorie má vlastní podkategorie. Přesuňte ji na hlavní úroveň.';
+          return 'Hierarchii kategorie je potřeba opravit.';
+        }
+        root.className = 'category-tree';
+        root.innerHTML = parents.map(function(parent) {
+          var children = categories.filter(function(category) {
+            var valid = category.parent_id === parent.id && !hasChildren(category.id);
+            if (valid) renderedIds.add(category.id);
+            return valid;
+          });
+          return '<section class="category-tree-group" aria-label="' + escapeHtml(parent.title) + '">' +
+            renderCategoryRow(parent) +
+            (children.length ? '<div class="category-tree-children" role="group" aria-label="Podkategorie ' + escapeHtml(parent.title) + '">' + children.map(function(child) { return renderCategoryRow(child); }).join('') + '</div>' : '') +
+          '</section>';
+        }).join('') + (categories.some(function(category) { return !renderedIds.has(category.id); })
+          ? '<section class="category-tree-group" aria-label="Kategorie vyžadující opravu"><p class="alert" style="margin:0 0 10px"><strong>Hierarchii těchto kategorií je potřeba opravit.</strong> Žádná data nejsou skrytá; otevřete kategorii a nastavte ji jako hlavní nebo vyberte platnou hlavní kategorii.</p><div class="category-tree-children">' + categories.filter(function(category) { return !renderedIds.has(category.id); }).map(function(category) { return renderCategoryRow(category, hierarchyProblem(category)); }).join('') + '</div></section>'
+          : '');
+      }
+
+      function setCategoryBusy(busy) {
+        categoryBusy = busy;
+        form.setAttribute('aria-busy', busy ? 'true' : 'false');
+        Array.from(form.elements).forEach(function(element) { element.disabled = busy; });
+        root.querySelectorAll('button').forEach(function(button) { button.disabled = busy; });
+        if (!busy) {
+          var isSubcategory = typeInputs.some(function(input) { return input.checked && input.value === 'subcategory'; });
+          parentInput.disabled = !isSubcategory;
+          var edited = categories.find(function(category) { return category.id === editedId; });
+          var hasChildren = edited && categories.some(function(item) { return item.parent_id === edited.id; });
+          typeInputs.forEach(function(input) { input.disabled = input.value === 'subcategory' && hasChildren && !edited.parent_id; });
+        }
       }
 
       async function requestJson(url, options) {
@@ -4568,6 +4827,7 @@ function productCategoriesAdminPage(session) {
 
       form.addEventListener('submit', function(event) {
         event.preventDefault();
+        if (categoryBusy) return;
         setMessage('', 'success');
         saveCategory(currentPayload(), editedId).catch(function(error) {
           setMessage(error.message, 'error');
@@ -4588,6 +4848,54 @@ function productCategoriesAdminPage(session) {
         slugTouched = true;
         slugInput.value = slugify(slugInput.value);
       });
+      imageAltVisibleInput.addEventListener('input', renderImagePreview);
+      document.getElementById('category-image-upload-button').addEventListener('click', function() {
+        imageUploadInput.click();
+      });
+      imageUploadInput.addEventListener('change', function() {
+        var selected = imageUploadInput.files && imageUploadInput.files[0];
+        if (!selected || categoryBusy) return;
+        var originatingSession = editSession;
+        var originatingCategoryId = editedId;
+        setCategoryBusy(true);
+        imageStatus.textContent = 'Připravuji a nahrávám obrázek…';
+        window.drevitoPrepareAdminImage(selected).then(function(file) {
+          var body = new FormData();
+          body.append('image', file);
+          body.append('targetLabel', titleInput.value.trim() || 'Kategorie výrobků');
+          body.append('targetKey', slugInput.value.trim() || slugify(titleInput.value) || 'kategorie');
+          body.append('alt', imageAltVisibleInput.value.trim() || titleInput.value.trim());
+          return fetch('/admin/api/product-categories/photo-upload', { method: 'POST', body: body, headers: { Accept: 'application/json' } });
+        }).then(function(response) {
+          return response.json().then(function(data) {
+            if (!response.ok) throw new Error(data.error || 'Nahrání se nepodařilo.');
+            return data;
+          });
+        }).then(function(data) {
+          if (originatingSession !== editSession || originatingCategoryId !== editedId) {
+            throw new Error('Upravovaná kategorie se během nahrávání změnila. Obrázek najdete v médiích, ale ke kategorii nebyl přiřazen.');
+          }
+          imageUrlInput.value = data.photo.url || '';
+          imageMediaIdInput.value = data.photo.media_id || '';
+          imageAltVisibleInput.value = data.photo.alt || imageAltVisibleInput.value.trim() || titleInput.value.trim();
+          imageStatus.textContent = 'Obrázek je nahraný. Pro zveřejnění ještě uložte kategorii.';
+          renderImagePreview();
+        }).catch(function(error) {
+          imageStatus.textContent = error.message;
+          setMessage(error.message, 'error');
+        }).finally(function() {
+          imageUploadInput.value = '';
+          setCategoryBusy(false);
+        });
+      });
+      imageRemoveButton.addEventListener('click', function() {
+        imageUrlInput.value = '';
+        imageAltInput.value = '';
+        imageMediaIdInput.value = '';
+        imageAltVisibleInput.value = '';
+        imageStatus.textContent = 'Obrázek bude odebraný po uložení kategorie.';
+        renderImagePreview();
+      });
 
       document.getElementById('category-reset').addEventListener('click', function() {
         setMessage('', 'success');
@@ -4599,6 +4907,7 @@ function productCategoriesAdminPage(session) {
       });
 
       root.addEventListener('click', function(event) {
+        if (categoryBusy) return;
         var button = event.target.closest('[data-action]');
         if (!button) return;
         var id = button.dataset.id;
@@ -5381,6 +5690,7 @@ function productsAdminPage(session) {
       async function uploadPhoto(selectedFile) {
         var file = selectedFile || (uploadInput.files && uploadInput.files[0]);
         if (!file) throw new Error('Vyberte fotku k nahrání.');
+        file = await window.drevitoPrepareAdminImage(file);
         var body = new FormData();
         body.append('image', file);
         body.append('targetLabel', titleInput.value.trim() || slugInput.value.trim() || 'Výrobek');
@@ -5858,6 +6168,7 @@ function blogPostsAdminPage(session) {
       async function uploadPhoto(selectedFile) {
         var file = selectedFile || (uploadInput.files && uploadInput.files[0]);
         if (!file) throw new Error('Vyberte fotku k nahrání.');
+        file = await window.drevitoPrepareAdminImage(file);
         var body = new FormData();
         body.append('image', file);
         body.append('targetLabel', titleInput.value.trim() || slugInput.value.trim() || 'Článek');
@@ -6057,6 +6368,10 @@ async function parseJsonBody(req) {
 
 function normalizeSupabaseError(error) {
   if (error && error.code === '23505') return 'Tento název už používá jiná položka.';
+  if (error && error.message === 'product_category_cannot_parent_itself') return 'Kategorie nemůže být sama sobě nadřazená.';
+  if (error && error.message === 'product_category_parent_not_found') return 'Nadřazená kategorie nebyla nalezena.';
+  if (error && error.message === 'product_category_max_depth_two') return 'Podkategorie může mít jen hlavní kategorii jako rodiče.';
+  if (error && error.message === 'product_category_with_children_cannot_be_reparented') return 'Hlavní kategorii s podkategoriemi nelze změnit na podkategorii. Nejprve přesuňte její podkategorie.';
   if (error && error.message) return error.message;
   return 'Požadavek na Supabase se nepodařil.';
 }
@@ -6206,8 +6521,6 @@ function normalizeProductCategoryInput(input) {
   }
   if (!Number.isFinite(sortOrder)) throw new Error('Pořadí musí být číslo.');
 
-  // TODO: Replace this temporary URL/media-id shape with Supabase media-table selection
-  // after the local upload flow is converted to Supabase Storage.
   const image = imageUrl || imageAlt || imageMediaId
     ? {
         url: imageUrl,
@@ -6252,8 +6565,11 @@ function ensureProductCategoryParentIsValid(categories, parentId, ownId = '') {
   if (ownId && parentId === ownId) throw new Error('Kategorie nemůže být sama sobě nadřazená.');
   const parent = categories.find((category) => category.id === parentId);
   if (!parent) throw new Error('Nadřazená kategorie nebyla nalezena.');
-  if (parent.parent_id && (!ownId || parent.parent_id !== ownId)) {
+  if (parent.parent_id) {
     throw new Error('Podkategorie může mít jen hlavní kategorii jako rodiče.');
+  }
+  if (ownId && categories.some((category) => category.parent_id === ownId)) {
+    throw new Error('Hlavní kategorii s podkategoriemi nelze změnit na podkategorii. Nejprve přesuňte její podkategorie.');
   }
 }
 
@@ -6426,9 +6742,6 @@ async function updateProductCategory(id, input) {
     const row = db.product_categories.find((item) => item.id === id);
     if (!row) throw new Error('Kategorie nebyla nalezena.');
     updateLocalRow(row, category);
-    db.product_categories.forEach((item) => {
-      if (item.parent_id === id && category.parent_id) item.parent_id = null;
-    });
     writeCmsDb(db);
     return row;
   }
@@ -7391,7 +7704,9 @@ function homepageLayoutFromLegacyRows(rows) {
   const byKey = new Map((Array.isArray(rows) ? rows : []).filter((item) => item && item.status === 'published').map((item) => [item.content_key, item]));
   const blockMap = new Map(layout.blocks.map((block) => [block.id, block]));
   const heroText = splitLegacyParagraphs(legacySiteContentText(byKey.get('homepage.hero')));
-  if (heroText[0]) blockMap.get('hero').content.title = heroText[0];
+  // Never restore an obsolete legacy hero heading. The legacy row is a
+  // transition-only source for the supporting paragraph; the confirmed title
+  // and removed eyebrow remain canonical even before the first layout publish.
   if (heroText[1]) blockMap.get('hero').content.body = heroText.slice(1).join(' ');
   const heroImage = byKey.get('homepage.hero.image');
   if (heroImage && heroImage.value) blockMap.get('hero').content.image = normalizeHomepageImage(heroImage.value, blockMap.get('hero').content.image);
@@ -7419,6 +7734,9 @@ function homepageLayoutFromLegacyRows(rows) {
   if (productsIntro) blockMap.get('products').content.body = productsIntro;
   if (blogTitle) blockMap.get('blog').content.title = blogTitle;
   if (blogIntro) blockMap.get('blog').content.body = blogIntro;
+  blockMap.get('hero').content.title = CONFIRMED_HERO_TITLE;
+  blockMap.get('hero').content.eyebrow = '';
+  blockMap.get('author').content.title = CONFIRMED_AUTHOR_TITLE;
   return normalizeHomepageLayout(layout);
 }
 
@@ -7666,9 +7984,9 @@ function hydrateHomepageLayout(layout, mediaMap) {
   const normalized = normalizeHomepageLayout(layout);
   normalized.blocks = normalized.blocks.map((block) => {
     const content = { ...(block.content || {}) };
-    if (content.image) content.image = hydratePublicImageRef(content.image, mediaMap) || normalizeHomepageImage(content.image);
+    if (content.image) content.image = hydratePublicImageRef(content.image, mediaMap) || normalizeHomepageImage({});
     if (Array.isArray(content.images)) {
-      content.images = content.images.map((image) => hydratePublicImageRef(image, mediaMap) || normalizeHomepageImage(image));
+      content.images = content.images.map((image) => hydratePublicImageRef(image, mediaMap)).filter(Boolean);
     }
     return { ...block, content };
   });
@@ -7864,9 +8182,15 @@ function isHomepageReservedContentKey(contentKey) {
   return HOMEPAGE_RESERVED_CONTENT_KEYS.has(String(contentKey || '').trim().toLowerCase());
 }
 
+function isLegacyHomepageContentKey(contentKey) {
+  return HOMEPAGE_LEGACY_CONTENT_KEYS.has(String(contentKey || '').trim().toLowerCase());
+}
+
 function assertGenericSiteContentKeyAllowed(contentKey) {
-  if (isHomepageReservedContentKey(contentKey)) {
-    throw new Error('Tento obsah spravuje vizuální editor domovské stránky. Ve starém editoru jej nelze měnit.');
+  if (isHomepageReservedContentKey(contentKey) || isLegacyHomepageContentKey(contentKey)) {
+    const error = new Error('Tento obsah spravuje editor domovské stránky. Upravte jej v sekci Domovská stránka, aby se změna skutečně projevila na webu.');
+    error.statusCode = 409;
+    throw error;
   }
 }
 
@@ -7886,7 +8210,7 @@ async function findSiteContentById(id) {
 
 async function listGenericSiteContent() {
   const contents = await listSiteContent();
-  return contents.filter((item) => !isHomepageReservedContentKey(item.content_key));
+  return contents.filter((item) => !isHomepageReservedContentKey(item.content_key) && !isLegacyHomepageContentKey(item.content_key));
 }
 
 function homepageWriteUnavailableError() {
@@ -8099,7 +8423,9 @@ async function fetchPublicMediaMap(mediaIds) {
   const rows = await supabaseRequest('media', {
     query: {
       select: 'id,public_url,alt_text,caption,is_public',
-      id: `in.(${ids.join(',')})`
+      id: `in.(${ids.join(',')})`,
+      is_public: 'eq.true',
+      public_url: 'not.is.null'
     }
   });
 
@@ -8114,7 +8440,11 @@ function hydratePublicImageRef(image, mediaMap) {
   const source = image && typeof image === 'object' ? image : {};
   const mediaId = String(source.media_id || source.mediaId || '').trim();
   const media = mediaId ? mediaMap.get(mediaId) : null;
-  const url = String((media && media.public_url) || source.url || '').trim();
+  // A reference carrying a media ID is canonical: it must resolve to an
+  // eligible public media row. Falling back to the embedded URL here would
+  // expose stale URLs when the row is missing or deliberately private.
+  if (mediaId && !media) return null;
+  const url = String(mediaId ? media.public_url : source.url || '').trim();
   if (!url) return null;
 
   return {
@@ -8153,6 +8483,14 @@ function hydratePublicSiteValue(item, mediaMap) {
 
 async function getPublicCmsPayload(locale = 'cs') {
   if (!isSupabaseConfigured()) {
+    if (process.env.NODE_ENV === 'production') {
+      const error = new Error('Produkční CMS není nakonfigurované.');
+      error.statusCode = 503;
+      throw error;
+    }
+    if (!isCmsExpected()) {
+      return { ok: true, configured: false, locale, homepage_layout: null, homepage_source: 'static', site_content: {}, products: [], product_categories: [], product_filters: [], blog_posts: [], blog_categories: [] };
+    }
     const db = readCmsDb();
     const publicRows = {
       siteContentRows: db.site_content,
@@ -8166,15 +8504,11 @@ async function getPublicCmsPayload(locale = 'cs') {
       blogCategoryRows: db.blog_categories,
       blogLinkRows: db.blog_category_links
     };
-    const hasAnyContent = publicRows.siteContentRows.length
-      || publicRows.productRows.length
-      || publicRows.productCategoryRows.length
-      || publicRows.blogPostRows.length
-      || publicRows.blogCategoryRows.length;
-    if (!hasAnyContent) {
-      return { ok: true, configured: false, locale, homepage_layout: null, site_content: {}, products: [], product_categories: [], product_filters: [], blog_posts: [], blog_categories: [] };
-    }
-    return buildPublicCmsPayload(locale, publicRows, new Map());
+    const mediaDb = readMediaDb();
+    const mediaMap = new Map(mediaDb.media
+      .filter((media) => media && media.is_public !== false && media.public_url)
+      .map((media) => [media.id, media]));
+    return buildPublicCmsPayload(locale, publicRows, mediaMap, mediaDb);
   }
 
   const [
@@ -8187,7 +8521,8 @@ async function getPublicCmsPayload(locale = 'cs') {
     blogLinkRows,
     productFilterRows,
     productFilterOptionRows,
-    productFilterLinkRows
+    productFilterLinkRows,
+    legacyMediaDb
   ] = await Promise.all([
     supabaseRequest('site_content', {
       query: {
@@ -8233,7 +8568,8 @@ async function getPublicCmsPayload(locale = 'cs') {
     }),
     supabaseRequest('product_filters', { query: { select: 'id,title,slug,description,sort_order,is_visible,archived_at', order: 'sort_order.asc,title.asc' } }),
     supabaseRequest('product_filter_options', { query: { select: 'id,filter_id,title,slug,sort_order,is_visible,archived_at', order: 'sort_order.asc,title.asc' } }),
-    supabaseRequest('product_filter_value_links', { query: { select: 'product_id,option_id' } })
+    supabaseRequest('product_filter_value_links', { query: { select: 'product_id,option_id' } }),
+    readSupabaseLegacyMediaDb()
   ]);
 
   return buildPublicCmsPayload(locale, {
@@ -8247,10 +8583,10 @@ async function getPublicCmsPayload(locale = 'cs') {
     productFilterRows,
     productFilterOptionRows,
     productFilterLinkRows
-  });
+  }, undefined, legacyMediaDb);
 }
 
-async function buildPublicCmsPayload(locale, rows, givenMediaMap) {
+async function buildPublicCmsPayload(locale, rows, givenMediaMap, legacyMediaDb) {
   const {
     siteContentRows,
     productRows,
@@ -8285,11 +8621,17 @@ async function buildPublicCmsPayload(locale, rows, givenMediaMap) {
   const productFilterLinks = (Array.isArray(productFilterLinkRows) ? productFilterLinkRows : []).filter((link) => publicProductIds.has(link.product_id) && publicOptionIds.has(link.option_id));
 
   const mediaIds = new Set();
+  const rawBridgedHomepageLayout = siteContent.some((item) => item.content_key === HOMEPAGE_LAYOUT_CONTENT_KEY)
+    ? null
+    : applyManagedImagesToHomepageLayout(homepageLayoutFromLegacyRows(siteContent), legacyMediaDb);
   siteContent.forEach((item) => collectMediaIdsFromSiteValue(mediaIds, item.content_type, item.value, item.content_key));
   productCategories.forEach((category) => collectMediaId(mediaIds, category.image));
   products.forEach((product) => collectMediaIdsFromPhotos(mediaIds, product.photos));
   blogCategories.forEach((category) => collectMediaId(mediaIds, category.image));
   blogPosts.forEach((post) => collectMediaIdsFromPhotos(mediaIds, post.photos));
+  if (rawBridgedHomepageLayout) collectMediaIdsFromHomepageLayout(mediaIds, rawBridgedHomepageLayout);
+  // Canonical references are resolved directly by UUID. The separately loaded
+  // media DB is only for legacy target discovery and never gates UUID lookup.
   const mediaMap = givenMediaMap || await fetchPublicMediaMap(mediaIds);
 
   const productCategoryMap = new Map(productCategories.map((category) => [category.id, {
@@ -8390,13 +8732,19 @@ async function buildPublicCmsPayload(locale, rows, givenMediaMap) {
     };
   });
 
+  const publishedHomepageLayout = publicSiteContent[HOMEPAGE_LAYOUT_CONTENT_KEY]
+    ? publicSiteContent[HOMEPAGE_LAYOUT_CONTENT_KEY].value
+    : null;
+  const bridgedHomepageLayout = publishedHomepageLayout
+    ? null
+    : hydrateHomepageLayout(rawBridgedHomepageLayout, mediaMap);
+
   return {
     ok: true,
     configured: true,
     locale,
-    homepage_layout: publicSiteContent[HOMEPAGE_LAYOUT_CONTENT_KEY]
-      ? publicSiteContent[HOMEPAGE_LAYOUT_CONTENT_KEY].value
-      : null,
+    homepage_layout: publishedHomepageLayout || bridgedHomepageLayout,
+    homepage_source: publishedHomepageLayout ? 'published_layout' : 'legacy_bridge',
     site_content: publicSiteContent,
     products: publicProducts,
     product_categories: [...productCategoryMap.values()],
@@ -8537,24 +8885,61 @@ async function restoreSiteContent(id) {
   return rows[0];
 }
 
-function validateUploadedImage(file) {
-  const mimeType = String(file.mime_type || '').toLowerCase();
-  const extension = IMAGE_EXTENSIONS[mimeType] || IMAGE_EXTENSIONS[mimeType.split(';')[0]];
-  if (!extension) throw new Error('Podporované jsou jen JPG, PNG, WebP nebo GIF obrázky.');
-  if (!file.buffer.length) throw new Error('Vyberte obrázek k nahrání.');
-  const bytes = file.buffer;
-  const isJpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-  const isPng = bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
-  const gifHeader = bytes.length >= 6 ? bytes.subarray(0, 6).toString('ascii') : '';
-  const isGif = gifHeader === 'GIF87a' || gifHeader === 'GIF89a';
-  const isWebp = bytes.length >= 12 && bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP';
-  const signatureMatches = extension === '.jpg' ? isJpeg : extension === '.png' ? isPng : extension === '.gif' ? isGif : isWebp;
-  if (!signatureMatches) throw new Error('Soubor není platný obrázek nebo neodpovídá vybranému formátu.');
-  return { mimeType, extension };
+function invalidImageError(message = 'Soubor není platný obrázek nebo neodpovídá vybranému formátu.') {
+  const error = new Error(message);
+  error.statusCode = 415;
+  return error;
 }
 
-function persistLocalUploadedImage(file, fields, session) {
-  const { mimeType, extension } = validateUploadedImage(file);
+function assertReasonableImageDimensions(width, height) {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) {
+    throw invalidImageError('Obrázek nemá platné rozměry.');
+  }
+  if (width > 20000 || height > 20000 || width * height > 100000000) {
+    throw invalidImageError('Obrázek má nepodporované rozměry. Před nahráním jej zmenšete.');
+  }
+  return { width, height };
+}
+
+async function validateUploadedImage(file) {
+  const mimeType = String(file.mime_type || '').toLowerCase().split(';')[0].trim();
+  const extension = IMAGE_EXTENSIONS[mimeType];
+  if (!extension) throw invalidImageError('Podporované jsou jen JPG, PNG, WebP nebo GIF obrázky. Fotky HEIC/HEIF nejprve exportujte jako JPG.');
+  if (!file.buffer || !file.buffer.length) throw invalidImageError('Vyberte obrázek k nahrání.');
+
+  const formatMimeTypes = {
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    webp: 'image/webp',
+    gif: 'image/gif'
+  };
+  try {
+    const decoder = sharp(file.buffer, {
+      failOn: 'error',
+      limitInputPixels: 100000000,
+      animated: false
+    });
+    const metadata = await decoder.metadata();
+    const actualMimeType = formatMimeTypes[metadata.format];
+    if (!actualMimeType || actualMimeType !== mimeType) throw invalidImageError();
+    const dimensions = assertReasonableImageDimensions(metadata.width, metadata.height);
+
+    // metadata() intentionally reads only the container header. Force libvips
+    // to decode the complete first frame so truncated/header-only files never
+    // reach Storage or the media table.
+    const decoded = await decoder.clone().raw().toBuffer({ resolveWithObject: true });
+    if (!decoded.data.length || !decoded.info.width || !decoded.info.height) {
+      throw invalidImageError();
+    }
+    return { mimeType, extension, ...dimensions };
+  } catch (error) {
+    if (error && error.statusCode === 415) throw error;
+    throw invalidImageError('Obrázek je poškozený nebo jej nelze dekódovat.');
+  }
+}
+
+async function persistLocalUploadedImage(file, fields, session) {
+  const { mimeType, extension, width, height } = await validateUploadedImage(file);
   const targetType = fields.targetType || 'site_sections';
   const targetKeySource = fields.targetKey || fields.targetLabel || targetType;
   const targetSlug = slugify(targetKeySource, 'target');
@@ -8578,8 +8963,8 @@ function persistLocalUploadedImage(file, fields, session) {
     caption: fields.caption || '',
     mime_type: mimeType,
     size_bytes: file.buffer.length,
-    width: null,
-    height: null,
+    width,
+    height,
     is_public: true,
     metadata: {
       original_name: originalName,
@@ -8597,7 +8982,7 @@ function persistLocalUploadedImage(file, fields, session) {
 }
 
 async function persistSupabaseUploadedImage(file, fields, session) {
-  const { mimeType, extension } = validateUploadedImage(file);
+  const { mimeType, extension, width, height } = await validateUploadedImage(file);
   const targetType = fields.targetType || 'site_sections';
   const bucket = mediaBucketForTargetType(targetType);
   const targetSlug = slugify(fields.targetKey || fields.targetLabel || targetType, 'target');
@@ -8614,8 +8999,8 @@ async function persistSupabaseUploadedImage(file, fields, session) {
     caption: fields.caption || '',
     mime_type: mimeType,
     size_bytes: file.buffer.length,
-    width: null,
-    height: null,
+    width,
+    height,
     is_public: true,
     metadata: {
       original_name: originalName,
@@ -8658,85 +9043,20 @@ async function persistUploadedImage(file, fields, session) {
     : persistLocalUploadedImage(file, fields, session);
 }
 
-async function handleMediaUpload(req, res, session) {
-  try {
-    const { fields, files } = await parseMultipart(req);
-    const image = files.image;
-    if (!image) throw new Error('Vyberte obrázek k nahrání.');
-
-    const db = await getMediaDb();
-    const targetType = fields.targetType || 'site_sections';
-    const target = getTarget(db, targetType, fields.targetKey, fields.targetLabel);
-    const replaceMediaId = fields.replaceMediaId || '';
-    const replaceIndex = replaceMediaId
-      ? target.images.findIndex((entry) => entry.media_id === replaceMediaId)
-      : -1;
-    const mediaIndex = replaceIndex !== -1 ? replaceIndex : (targetType === 'site_sections' ? 0 : target.images.length);
-    const mediaFields = {
-      ...fields,
-      targetType,
-      targetKey: target.key,
-      targetLabel: target.label || fields.targetLabel || target.key,
-      sortOrder: mediaIndex,
-      isFeatured: mediaIndex === 0
-    };
-    const media = await persistUploadedImage(image, mediaFields, session);
-    const photo = createPhotoRef(media, mediaIndex);
-    photo.alt = fields.alt || target.label || '';
-    photo.caption = fields.caption || '';
-
-    db.media.push(media);
-    if (replaceIndex !== -1) {
-      const [oldPhoto] = target.images.splice(replaceIndex, 1, photo);
-      await deleteUnreferencedMedia(db, oldPhoto.media_id);
-    } else if (targetType === 'site_sections') {
-      const oldImages = target.images.splice(0, target.images.length, photo);
-      for (const oldPhoto of oldImages) {
-        await deleteUnreferencedMedia(db, oldPhoto.media_id);
-      }
-    } else {
-      target.images.push(photo);
-    }
-
-    updateImageOrdering(target.images);
-    if (!isSupabaseConfigured()) writeMediaDb(db);
-    sendJson(res, 201, { ok: true, media, target });
-  } catch (error) {
-    sendJson(res, error.statusCode || 400, { ok: false, error: error.message || 'Nahrání se nepodařilo.' });
-  }
+async function handleMediaUpload(req, res) {
+  req.resume();
+  sendJson(res, 410, {
+    ok: false,
+    error: 'Samostatný správce médií už obrázky nepublikuje. Nahrajte je přímo v editoru domovské stránky, kategorie, výrobku nebo článku.'
+  }, { 'Cache-Control': 'no-store' });
 }
 
 async function handleMediaDelete(req, res) {
-  try {
-    const body = await parseJsonBody(req);
-    const db = await getMediaDb();
-    const targetType = body.targetType;
-    const targetKey = body.targetKey;
-    const mediaId = body.mediaId;
-    if (!TARGET_TYPES[targetType] || !targetKey || !mediaId) {
-      throw new Error('Chybí údaje pro smazání fotky.');
-    }
-    if (await hasPersistedMediaReference(mediaId)) {
-      const error = new Error('Fotku stále používá uložený obsah. Nejprve ji odeberte ze všech bloků, výrobků nebo článků.');
-      error.statusCode = 409;
-      throw error;
-    }
-
-    const target = db.targets[targetType] && db.targets[targetType][targetKey];
-    if (!target || !Array.isArray(target.images)) throw new Error('Položka nebyla nalezena.');
-
-    const before = target.images.length;
-    target.images = target.images.filter((image) => image.media_id !== mediaId);
-    if (target.images.length === before) throw new Error('Fotka nebyla nalezena.');
-    updateImageOrdering(target.images);
-
-    await deleteUnreferencedMedia(db, mediaId);
-
-    if (!isSupabaseConfigured()) writeMediaDb(db);
-    sendJson(res, 200, { ok: true });
-  } catch (error) {
-    sendJson(res, error.statusCode || 400, { ok: false, error: error.message || 'Smazání se nepodařilo.' });
-  }
+  req.resume();
+  sendJson(res, 410, {
+    ok: false,
+    error: 'Mazání ve starém správci médií je vypnuté. Obrázek odeberte přímo z obsahu, který jej používá.'
+  }, { 'Cache-Control': 'no-store' });
 }
 
 async function handleProductPhotoUpload(req, res, session) {
@@ -8770,7 +9090,43 @@ async function handleProductPhotoUpload(req, res, session) {
     if (!isSupabaseConfigured()) writeMediaDb(db);
     sendJson(res, 201, { ok: true, media, photo, target });
   } catch (error) {
-    sendJson(res, 400, { ok: false, error: error.message || 'Nahrání se nepodařilo.' });
+    sendJson(res, error.statusCode || 400, { ok: false, error: error.message || 'Nahrání se nepodařilo.' });
+  }
+}
+
+async function handleProductCategoryPhotoUpload(req, res, session) {
+  try {
+    const { fields, files } = await parseMultipart(req);
+    const image = files.image;
+    if (!image) throw new Error('Vyberte obrázek k nahrání.');
+
+    const db = await getMediaDb();
+    const targetFields = {
+      ...fields,
+      targetType: 'product_categories',
+      targetKey: slugify(fields.targetKey || fields.targetLabel || 'kategorie', 'kategorie'),
+      targetLabel: fields.targetLabel || fields.targetKey || 'Kategorie výrobků'
+    };
+    const target = getTarget(db, 'product_categories', targetFields.targetKey, targetFields.targetLabel);
+    const mediaFields = {
+      ...targetFields,
+      targetKey: target.key,
+      targetLabel: target.label || targetFields.targetLabel,
+      sortOrder: target.images.length,
+      isFeatured: true
+    };
+    const media = await persistUploadedImage(image, mediaFields, session);
+    const photo = createPhotoRef(media, 0);
+    photo.alt = fields.alt || target.label || '';
+    photo.caption = fields.caption || '';
+
+    target.images.push(photo);
+    db.media.push(media);
+    updateImageOrdering(target.images);
+    if (!isSupabaseConfigured()) writeMediaDb(db);
+    sendJson(res, 201, { ok: true, media, photo, target });
+  } catch (error) {
+    sendJson(res, error.statusCode || 400, { ok: false, error: error.message || 'Nahrání se nepodařilo.' });
   }
 }
 
@@ -8805,7 +9161,7 @@ async function handleBlogPostPhotoUpload(req, res, session) {
     if (!isSupabaseConfigured()) writeMediaDb(db);
     sendJson(res, 201, { ok: true, media, photo, target });
   } catch (error) {
-    sendJson(res, 400, { ok: false, error: error.message || 'Nahrání se nepodařilo.' });
+    sendJson(res, error.statusCode || 400, { ok: false, error: error.message || 'Nahrání se nepodařilo.' });
   }
 }
 
@@ -8813,6 +9169,11 @@ async function handleSiteContentPhotoUpload(req, res, session) {
   try {
     assertHomepageWritesAvailable();
     const { fields, files } = await parseMultipart(req);
+    if (fields.editorContext !== 'homepage-layout') {
+      const error = new Error('Obrázky domovské stránky lze nahrát pouze v editoru Domovská stránka, kde se uloží do konkrétního bloku.');
+      error.statusCode = 409;
+      throw error;
+    }
     const image = files.image;
     if (!image) throw new Error('Vyberte obrázek k nahrání.');
 
@@ -8865,10 +9226,31 @@ function fallbackProduct(slug) {
   };
 }
 
+function renderCmsUnavailablePage(kind) {
+  const noun = kind === 'blog' ? 'článek' : 'výrobek';
+  return `<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Obsah je dočasně nedostupný - Dřevito</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/favicon.ico?v=20260622-3" sizes="any">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#f5f0e8;color:#3d2b1f;font-family:'DM Sans',system-ui,sans-serif}.panel{width:min(100%,680px);padding:clamp(32px,7vw,58px);border:1px solid rgba(61,43,31,.16);border-radius:24px;background:#fdfcfa;text-align:center;box-shadow:0 12px 34px rgba(61,43,31,.1)}h1{margin:0 0 16px;font-family:'Cormorant Garamond',Georgia,serif;font-size:clamp(2.4rem,7vw,4.5rem);line-height:1}p{margin:0;color:#6b5a4a}.button{display:inline-flex;margin-top:28px;padding:12px 22px;border-radius:999px;background:#3d2b1f;color:#fff;text-decoration:none;font-weight:700}
+  </style>
+</head>
+<body><main class="panel"><h1>Obsah je dočasně nedostupný</h1><p>Aktuální ${noun} se nepodařilo bezpečně načíst. Zkuste stránku prosím znovu za chvíli.</p><a class="button" href="/">Zpět na Dřevito</a></main></body>
+</html>`;
+}
+
 async function getPublicProduct(slug, locale = 'cs') {
   const payload = await getPublicCmsPayload(locale);
   const product = (payload.products || []).find((item) => item.slug === slug);
-  return product || fallbackProduct(slug);
+  return product || (payload.configured ? null : fallbackProduct(slug));
 }
 
 function publicProductPhotos(product) {
@@ -9193,11 +9575,15 @@ async function handlePublicProductRoute(req, res, url) {
     const product = await getPublicProduct(slug, (url.searchParams.get('locale') || 'cs').trim().toLowerCase());
     if (!product) return false;
     const rendered = renderPublicProductPage(product);
-    send(res, rendered.statusCode, rendered.html, { 'Cache-Control': 'no-cache' });
+    send(res, rendered.statusCode, rendered.html, { 'Cache-Control': 'no-store' });
   } catch (error) {
+    console.error(error);
+    if (isCmsExpected()) {
+      send(res, 503, renderCmsUnavailablePage('product'), { 'Cache-Control': 'no-store', 'Retry-After': '60' });
+      return true;
+    }
     const fallback = fallbackProduct(slug);
     if (!fallback) throw error;
-    console.error(error);
     const rendered = renderPublicProductPage(fallback);
     send(res, rendered.statusCode, rendered.html, { 'Cache-Control': 'no-store' });
   }
@@ -9259,10 +9645,9 @@ function formatDateCs(value) {
 }
 
 async function getPublicBlogPost(slug, locale = 'cs') {
-  const fallback = fallbackBlogPost(slug);
   const payload = await getPublicCmsPayload(locale);
   const post = (payload.blog_posts || []).find((item) => item.slug === slug);
-  return post || fallback;
+  return post || (payload.configured ? null : fallbackBlogPost(slug));
 }
 
 function blogPostMeta(post) {
@@ -9484,12 +9869,16 @@ async function handlePublicBlogRoute(req, res, url) {
     if (!post) return false;
     const rendered = renderPublicBlogPostPage(post);
     send(res, rendered.statusCode, rendered.html, {
-      'Cache-Control': 'no-cache'
+      'Cache-Control': 'no-store'
     });
   } catch (error) {
+    console.error(error);
+    if (isCmsExpected()) {
+      send(res, 503, renderCmsUnavailablePage('blog'), { 'Cache-Control': 'no-store', 'Retry-After': '60' });
+      return true;
+    }
     const fallback = fallbackBlogPost(slug);
     if (!fallback) throw error;
-    console.error(error);
     const rendered = renderPublicBlogPostPage(fallback);
     send(res, rendered.statusCode, rendered.html, {
       'Cache-Control': 'no-store'
@@ -9498,14 +9887,48 @@ async function handlePublicBlogRoute(req, res, url) {
   return true;
 }
 
+function serveIndex(req, res) {
+  fs.readFile(path.join(ROOT_DIR, 'index.html'), 'utf8', (error, source) => {
+    if (error) {
+      send(res, 500, 'Internal server error');
+      return;
+    }
+    const cmsMode = isCmsExpected()
+      ? 'configured'
+      : 'unconfigured';
+    const body = source.replaceAll('__DREVITO_CMS_MODE__', cmsMode);
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'no-cache'
+    });
+    res.end(req.method === 'HEAD' ? '' : body);
+  });
+}
+
 function serveStatic(req, res, pathname) {
   const requestedPath = pathname === '/' ? '/index.html' : pathname;
-  const decodedPath = decodeURIComponent(requestedPath);
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(requestedPath);
+  } catch (error) {
+    send(res, 400, 'Bad request');
+    return;
+  }
+  if (decodedPath === '/index.html') {
+    serveIndex(req, res);
+    return;
+  }
   const isRuntimeUpload = decodedPath.startsWith('/uploads/');
-  const fileRoot = isRuntimeUpload ? UPLOAD_DIR : ROOT_DIR;
+  const publicAsset = decodedPath.replace(/^\/+/, '');
+  if (!isRuntimeUpload && (!PUBLIC_STATIC_FILES.has(publicAsset) || publicAsset.includes('/'))) {
+    send(res, 404, 'Not found');
+    return;
+  }
+  const fileRoot = path.resolve(isRuntimeUpload ? UPLOAD_DIR : ROOT_DIR);
   const relativePath = isRuntimeUpload
     ? decodedPath.slice('/uploads/'.length)
-    : `.${decodedPath}`;
+    : publicAsset;
   const filePath = path.resolve(fileRoot, relativePath);
   if (!filePath.startsWith(fileRoot + path.sep)) {
     send(res, 403, 'Forbidden');
@@ -9524,7 +9947,8 @@ function serveStatic(req, res, pathname) {
       'X-Content-Type-Options': 'nosniff',
       'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600'
     });
-    fs.createReadStream(filePath).pipe(res);
+    if (req.method === 'HEAD') res.end();
+    else fs.createReadStream(filePath).pipe(res);
   });
 }
 
@@ -10018,6 +10442,11 @@ async function handleAdmin(req, res, url) {
     return;
   }
 
+  if (url.pathname === '/admin/api/product-categories/photo-upload' && req.method === 'POST') {
+    await handleProductCategoryPhotoUpload(req, res, session);
+    return;
+  }
+
   const productCategoryMatch = url.pathname.match(/^\/admin\/api\/product-categories\/([^/]+)$/);
   if (productCategoryMatch && req.method === 'PATCH') {
     try {
@@ -10126,7 +10555,19 @@ async function handleAdmin(req, res, url) {
   }
 
   if (url.pathname === '/admin/media' && req.method === 'GET') {
-    send(res, 200, mediaAdminPage(session), {
+    send(res, 200, adminLayout('Obrázky', `
+      ${adminMasthead(session)}
+      <div class="content">
+        <h1>Obrázky se upravují přímo u obsahu</h1>
+        <p>Starý samostatný správce médií byl vypnutý, protože mohl uložit obrázek bez změny veřejného webu. Vyberte místo, kde má být obrázek použit.</p>
+        <div class="admin-tools">
+          <a class="admin-tool" href="/admin/homepage"><span>Homepage</span><strong>Domovská stránka</strong><p>Úvodní fotografie a obrázky obsahových bloků.</p></a>
+          <a class="admin-tool" href="/admin/product-categories"><span>Katalog</span><strong>Kategorie</strong><p>Obrázek prezentace konkrétní kategorie.</p></a>
+          <a class="admin-tool" href="/admin/products"><span>Katalog</span><strong>Výrobky</strong><p>Fotografie uložené u konkrétního výrobku.</p></a>
+          <a class="admin-tool" href="/admin/blog-posts"><span>Blog</span><strong>Články</strong><p>Fotografie uložené u konkrétního článku.</p></a>
+        </div>
+      </div>
+    `), {
       'Cache-Control': 'no-store'
     });
     return;
@@ -10190,7 +10631,7 @@ function handleRequest(req, res) {
     getPublicMediaTargets()
       .then((targets) => {
         sendJson(res, 200, targets, {
-          'Cache-Control': 'no-cache'
+          'Cache-Control': 'no-store'
         });
       })
       .catch((error) => {
@@ -10206,17 +10647,18 @@ function handleRequest(req, res) {
     getPublicCmsPayload((url.searchParams.get('locale') || 'cs').trim().toLowerCase())
       .then((payload) => {
         sendJson(res, 200, payload, {
-          'Cache-Control': 'no-cache'
+          'Cache-Control': 'no-store'
         });
       })
       .catch((error) => {
         console.error(error);
-        sendJson(res, 500, {
+        sendJson(res, 503, {
           ok: false,
-          configured: isSupabaseConfigured(),
+          configured: isCmsExpected(),
           error: 'Public CMS content could not be loaded.'
         }, {
-          'Cache-Control': 'no-store'
+          'Cache-Control': 'no-store',
+          'Retry-After': '60'
         });
       });
     return;
@@ -10236,7 +10678,7 @@ function handleRequest(req, res) {
   }
 
   if (isPublicProductsRoute(url.pathname)) {
-    serveStatic(req, res, '/index.html');
+    serveIndex(req, res);
     return;
   }
 
