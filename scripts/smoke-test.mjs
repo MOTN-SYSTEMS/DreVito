@@ -189,10 +189,25 @@ try {
   check(homepageEditorHtml.includes('id="homepage-editor"') && homepageEditorHtml.includes('Domovská stránka'), 'Authenticated homepage editor did not render.');
   check(homepageEditorHtml.includes('id="homepage-publish" type="button" disabled'), 'Homepage publish control was enabled before initial state loading.');
   check(homepageEditorHtml.includes('data-open-library disabled'), 'Homepage add-block control was enabled before initial state loading.');
-  for (const route of ['/', '/admin/homepage', '/admin/product-categories', '/admin/blog-posts', '/admin/blog-categories']) {
+  for (const route of ['/', '/admin/homepage', '/admin/products', '/admin/product-categories', '/admin/blog-posts', '/admin/blog-categories']) {
     const html = await (await request(route, { expectedStatus: 200 })).text();
     for (const match of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)) {
       if (match[1].trim()) new Script(match[1], { filename: route });
+    }
+    if (route === '/admin/products' || route === '/admin/blog-posts') {
+      const formatter = html.match(/function formatDateForInput\(value\) \{[\s\S]*?\n      \}/)?.[0];
+      check(formatter, `${route} publication timestamp formatter was missing.`);
+      const previousTimezone = process.env.TZ;
+      try {
+        process.env.TZ = 'Europe/Prague';
+        const formatPublishedAt = new Script(`(${formatter})`).runInNewContext();
+        for (const value of ['2026-09-16T10:00:00.123Z', '2026-01-16T10:00:00.123Z']) {
+          assert.equal(formatPublishedAt(value), value, `${route} shifted a publication timestamp while editing.`);
+        }
+      } finally {
+        if (previousTimezone === undefined) delete process.env.TZ;
+        else process.env.TZ = previousTimezone;
+      }
     }
   }
 
@@ -747,6 +762,12 @@ try {
   check(product.is_published && product.is_visible, 'Product was not published.');
   check(product.category_ids.includes(productCategory.id), 'Product category link was not saved.');
   check(product.filter_option_ids.includes(filterOption.id), 'Product filter link was not saved.');
+
+  const editedProduct = (await jsonRequest(`/admin/api/products/${product.id}`, {
+    method: 'PATCH',
+    json: { ...productPayload, description: 'Edited published product.', published_at: product.published_at }
+  })).product;
+  check(editedProduct.published_at === product.published_at, 'Editing changed the product publication time.');
 
   publicContent = await jsonRequest('/api/public-content?locale=cs', { authenticated: false });
   let publicProduct = publicContent.products.find((item) => item.slug === productPayload.slug);

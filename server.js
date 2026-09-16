@@ -5474,7 +5474,8 @@ function productsAdminPage(session) {
         if (!value) return '';
         var date = new Date(value);
         if (Number.isNaN(date.getTime())) return '';
-        return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        // This is a hidden field, so retain the UTC offset when saving edits.
+        return date.toISOString();
       }
 
       function selectedCategoryIds() {
@@ -5983,7 +5984,8 @@ function blogPostsAdminPage(session) {
         if (!value) return '';
         var date = new Date(value);
         if (Number.isNaN(date.getTime())) return '';
-        return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        // This is a hidden field, so retain the UTC offset when saving edits.
+        return date.toISOString();
       }
 
       function selectedCategoryIds() {
