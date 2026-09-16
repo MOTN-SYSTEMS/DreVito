@@ -5344,12 +5344,15 @@ function productsAdminPage(session) {
             </label>
             <input id="product-sort-order" name="sort_order" type="hidden" value="0">
             <input id="product-published-at" name="published_at" type="hidden">
-            <label>
-              Kategorie
-              <div class="category-checks" id="product-category-checks">
-                <span class="product-meta">Načítám kategorie...</span>
+            <div id="product-category-checks">
+              <label for="product-root-category">Hlavní kategorie</label>
+              <select id="product-root-category"><option value="">Vyberte hlavní kategorii</option></select>
+              <div id="product-child-category-field" hidden>
+                <label for="product-child-category">Podkategorie</label>
+                <select id="product-child-category" disabled><option value="">Bez podkategorie</option></select>
               </div>
-            </label>
+              <p id="product-category-note" class="product-meta" hidden></p>
+            </div>
             <section class="filter-settings" aria-labelledby="product-filter-heading">
               <h3 id="product-filter-heading">Filtry pro hledání na webu</h3>
               <p>Vybrané možnosti se návštěvníkům automaticky nabídnou ve filtrování výrobků.</p>
@@ -5400,7 +5403,7 @@ function productsAdminPage(session) {
             <div class="photo-list" id="product-photos"></div>
 
             <div class="actions">
-              <button class="button" type="submit" value="save">Uložit</button>
+              <button class="button" type="submit" value="save">Přesunout do archivu</button>
               <button class="button button--secondary" type="submit" value="publish">Publikovat</button>
             </div>
           </form>
@@ -5441,7 +5444,13 @@ function productsAdminPage(session) {
       var useExteriorInput = document.getElementById('product-use-exterior');
       var sortOrderInput = document.getElementById('product-sort-order');
       var publishedAtInput = document.getElementById('product-published-at');
-      var categoryChecks = document.getElementById('product-category-checks');
+      var rootCategory = document.getElementById('product-root-category');
+      var childCategory = document.getElementById('product-child-category');
+      var childCategoryField = document.getElementById('product-child-category-field');
+      var categoryNote = document.getElementById('product-category-note');
+      var originalCategoryIds = [];
+      var categorySelectionChanged = false;
+      var includeParentCategory = false;
       var filterChecks = document.getElementById('product-filter-checks');
       var photoUrlInput = document.getElementById('product-photo-url');
       var photoAltInput = document.getElementById('product-photo-alt');
@@ -5484,8 +5493,10 @@ function productsAdminPage(session) {
       }
 
       function selectedCategoryIds() {
-        return Array.prototype.slice.call(categoryChecks.querySelectorAll('input[type="checkbox"]:checked'))
-          .map(function(input) { return input.value; });
+        if (!categorySelectionChanged) return originalCategoryIds.slice();
+        if (!rootCategory.value) return [];
+        if (!childCategory.value) return [rootCategory.value];
+        return includeParentCategory ? [rootCategory.value, childCategory.value] : [childCategory.value];
       }
 
       function selectedFilterOptionIds() {
@@ -5549,23 +5560,43 @@ function productsAdminPage(session) {
         titleInput.focus();
       }
 
-      function renderCategoryChecks(selectedIds) {
-        if (!categories.length) {
-          categoryChecks.innerHTML = '<span class="product-meta">Nejdřív vytvořte kategorii výrobků.</span>';
-          return;
-        }
-        var categoryById = {};
-        categories.forEach(function(category) { categoryById[category.id] = category; });
-        categoryChecks.innerHTML = categories.map(function(category) {
-          var checked = selectedIds.indexOf(category.id) !== -1 ? ' checked' : '';
-          var muted = category.archived_at ? ' (archiv)' : category.is_visible ? '' : ' (skrytá)';
-          var parent = category.parent_id && categoryById[category.parent_id] ? categoryById[category.parent_id].title + ' / ' : '';
-          return '<label class="check-label">' +
-            '<input type="checkbox" value="' + escapeHtml(category.id) + '"' + checked + '>' +
-            escapeHtml(parent + category.title + muted) +
-          '</label>';
-        }).join('');
+      function categoryOption(category) {
+        return '<option value="' + escapeHtml(category.id) + '">' + escapeHtml(category.title + (category.archived_at ? ' (archiv)' : category.is_visible ? '' : ' (skrytá)')) + '</option>';
       }
+
+      function renderChildCategories(selectedId) {
+        var children = categories.filter(function(category) { return category.parent_id === rootCategory.value; });
+        childCategory.innerHTML = '<option value="">Bez podkategorie</option>' + children.map(categoryOption).join('');
+        childCategory.value = children.some(function(category) { return category.id === selectedId; }) ? selectedId : '';
+        childCategory.disabled = !children.length;
+        childCategoryField.hidden = !children.length;
+      }
+
+      function renderCategoryChecks(selectedIds) {
+        originalCategoryIds = selectedIds.slice();
+        categorySelectionChanged = false;
+        var selected = categories.filter(function(category) { return selectedIds.indexOf(category.id) !== -1; });
+        var child = selected.find(function(category) { return category.parent_id; });
+        var parentId = child ? child.parent_id : selected.length ? selected[0].id : '';
+        includeParentCategory = Boolean(child && selectedIds.indexOf(parentId) !== -1);
+        rootCategory.innerHTML = '<option value="">Vyberte hlavní kategorii</option>' + categories.filter(function(category) { return !category.parent_id; }).map(categoryOption).join('');
+        rootCategory.value = parentId;
+        renderChildCategories(child ? child.id : '');
+        var representedIds = [parentId, child && child.id];
+        var hasAdditional = selectedIds.some(function(id) { return representedIds.indexOf(id) === -1; });
+        categoryNote.hidden = !hasAdditional;
+        categoryNote.textContent = hasAdditional ? 'Výrobek má další přiřazené kategorie. Beze změny výběru zůstanou zachovány; změnou výběru je nahradíte.' : '';
+      }
+
+      rootCategory.addEventListener('change', function() {
+        categorySelectionChanged = true;
+        categoryNote.hidden = true;
+        renderChildCategories('');
+      });
+      childCategory.addEventListener('change', function() {
+        categorySelectionChanged = true;
+        categoryNote.hidden = true;
+      });
 
       function renderFilterChecks(selectedIds) {
         if (!customFilters.length) {
