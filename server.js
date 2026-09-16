@@ -4726,6 +4726,9 @@ function productCategoriesAdminPage(session) {
           var assignedProducts = productsInCategory(category);
           var productNames = assignedProducts.slice(0, 5).map(function(product) { return product.title; }).join(', ');
           var actionHtml = '<button class="button button--secondary button--small" type="button" data-action="toggle" data-id="' + escapeHtml(category.id) + '">' + toggleLabel + '</button>';
+          if (!category.is_visible) {
+            actionHtml += '<button class="button button--secondary button--small" type="button" data-action="archive" data-id="' + escapeHtml(category.id) + '">Archivovat</button>';
+          }
 
           return '<article class="category-row">' +
             thumb +
@@ -4941,6 +4944,8 @@ function productCategoriesAdminPage(session) {
 
         if (button.dataset.action === 'edit') {
           editCategory(category);
+        } else if (button.dataset.action === 'archive') {
+          archiveCategory(id).catch(function(error) { setMessage(error.message, 'error'); });
         } else if (button.dataset.action === 'toggle') {
           if (category.is_visible) {
             archiveCategory(id).catch(function(error) { setMessage(error.message, 'error'); });

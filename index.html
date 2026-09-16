@@ -1052,6 +1052,27 @@
             background: rgba(241, 234, 223, 0.94);
             box-shadow: 0 12px 35px rgba(43, 33, 24, 0.1);
         }
+        /* Shape only the backdrop: the overlapping logo and menus stay unclipped. */
+        .nav, .nav.scrolled {
+            background: transparent;
+            border-bottom: 0;
+            box-shadow: none;
+            backdrop-filter: none;
+            isolation: isolate;
+        }
+        .nav::before {
+            content: '';
+            position: absolute;
+            inset: 0 0 -20px;
+            z-index: -1;
+            pointer-events: none;
+            background: rgba(232, 217, 194, 0.88);
+            backdrop-filter: blur(12px);
+            -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 102' preserveAspectRatio='none'%3E%3Cpath d='M0 0H1440V87C1240 104 1120 78 900 86S570 104 340 89S130 83 0 94Z'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 102' preserveAspectRatio='none'%3E%3Cpath d='M0 0H1440V87C1240 104 1120 78 900 86S570 104 340 89S130 83 0 94Z'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+            transition: background-color var(--transition-smooth);
+        }
+        .nav.scrolled::before { background: rgba(241, 234, 223, 0.94); }
         .nav__inner { max-width: 1320px; padding-inline: clamp(1.25rem, 4vw, 3rem); }
         .nav__logo { min-width: 154px; }
         .nav__logo::before {
@@ -1092,6 +1113,17 @@
             isolation: isolate;
         }
         .hero__bg { background-position: center 52%; transform: scale(1.02); animation: heroDrift 18s ease-in-out infinite alternate; }
+        .hero::after {
+            content: '';
+            position: absolute;
+            inset: auto 0 -1px;
+            height: clamp(28px, 4vw, 56px);
+            z-index: 2;
+            pointer-events: none;
+            background: var(--color-bg);
+            -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 64' preserveAspectRatio='none'%3E%3Cpath d='M0 29C190 4 340 10 550 29S880 50 1080 28S1310 13 1440 20V64H0Z'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 64' preserveAspectRatio='none'%3E%3Cpath d='M0 29C190 4 340 10 550 29S880 50 1080 28S1310 13 1440 20V64H0Z'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+        }
         .hero__bg::after {
             background:
                 linear-gradient(90deg, rgba(29, 23, 17, 0.91) 0%, rgba(33, 26, 20, 0.73) 46%, rgba(33, 26, 20, 0.2) 78%),
