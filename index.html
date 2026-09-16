@@ -1645,7 +1645,7 @@
         ::selection { background: #DED2C1; color: #2B2118; }
         a { text-underline-offset: 0.2em; }
         :focus-visible { outline-color: #7B4726; }
-        .hero__title, .hero__tagline, .hero__scroll, .hero__eyebrow {
+        .hero__title, .hero__tagline, .hero__scroll, .hero__eyebrow, .hero__actions {
             opacity: 1; transform: none; animation: none;
         }
         .hero__eyebrow:empty { display: none; }
@@ -1660,6 +1660,7 @@
         .homepage-story__copy, .content-detail__text { overflow-wrap: anywhere; }
         .product-card__price { font-variant-numeric: tabular-nums; }
         .products__filters::before { content: none; }
+        .author__lead, .author__signature, .nav__dropdown-title { color: #E7C696; }
         @media (prefers-reduced-motion: no-preference) {
             .hero__eyebrow::before { transform-origin: left; animation: grain-line 650ms cubic-bezier(0.16,1,0.3,1) both; }
             @keyframes grain-line { from { transform: scaleX(0.2); } to { transform: scaleX(1); } }

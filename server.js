@@ -10232,7 +10232,7 @@ function renderPublicBlogPostPage(post, statusCode = 200) {
       padding: clamp(42px, 8vw, 86px) 0;
     }
     .kicker {
-      color: var(--accent);
+      color: #7b4726;
       font-size: 0.82rem;
       font-weight: 700;
       letter-spacing: 0.08em;
