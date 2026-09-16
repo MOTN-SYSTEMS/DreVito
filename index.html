@@ -1025,22 +1025,6 @@
             letter-spacing: -0.025em;
             text-wrap: balance;
         }
-        .section-title::before,
-        .custom__title::before {
-            display: block;
-            margin-bottom: 1rem;
-            color: #7B4726;
-            font: 700 0.68rem/1 var(--font-body);
-            letter-spacing: 0.2em;
-            text-transform: uppercase;
-        }
-        .about .section-title::before { content: 'Dřevo · ruce · čas'; }
-        .products .section-title::before { content: 'Výběr z dílny'; }
-        .blog .section-title::before { content: 'Poznámky a příběhy'; }
-        .author .section-title::before { content: 'Člověk za řemeslem'; }
-        .custom__title::before { content: 'Od myšlenky k originálu'; }
-        .author .section-title::before { color: #E7C696; }
-        .custom__title::before { color: rgba(43, 33, 24, 0.78); }
 
         .nav {
             background: rgba(232, 217, 194, 0.88);
@@ -1657,15 +1641,29 @@
         .file-product__story-copy p { margin: 0 0 1.1rem; color: rgba(255, 252, 246, 0.76); }
         .file-product__story-copy p:last-child { margin-bottom: 0; }
 
-        .motion-ready .reveal-item {
-            opacity: 0;
-            transform: translateY(28px);
-            transition:
-                opacity 0.8s cubic-bezier(.2,.75,.25,1),
-                transform 0.8s cubic-bezier(.2,.75,.25,1);
-            transition-delay: var(--reveal-delay, 0ms);
+        /* Keep reading uninterrupted; motion acknowledges deliberate interaction. */
+        ::selection { background: #DED2C1; color: #2B2118; }
+        a { text-underline-offset: 0.2em; }
+        :focus-visible { outline-color: #7B4726; }
+        .hero__title, .hero__tagline, .hero__scroll, .hero__eyebrow {
+            opacity: 1; transform: none; animation: none;
         }
-        .motion-ready .reveal-item.reveal-visible { opacity: 1; transform: translateY(0); }
+        .hero__eyebrow:empty { display: none; }
+        .hero__scroll svg { animation: none; transition: transform 180ms ease-out; }
+        .hero__scroll:hover svg, .hero__scroll:focus-visible svg { transform: translateY(4px); }
+        .btn:active, .hero__action:active { transform: scale(0.98); }
+        .products__tab, .products__subtab, .blog__tab { min-height: 44px; }
+        .products__empty a { display: inline-block; margin-top: 0.75rem; font-weight: 600; }
+        .blog-card--text-only { grid-template-columns: 1fr; }
+        .blog-card--text-only .blog-card__body { justify-content: center; }
+        .about__text, .author__text, .blog__intro, .custom__text, .custom__subtext,
+        .homepage-story__copy, .content-detail__text { overflow-wrap: anywhere; }
+        .product-card__price { font-variant-numeric: tabular-nums; }
+        .products__filters::before { content: none; }
+        @media (prefers-reduced-motion: no-preference) {
+            .hero__eyebrow::before { transform-origin: left; animation: grain-line 650ms cubic-bezier(0.16,1,0.3,1) both; }
+            @keyframes grain-line { from { transform: scaleX(0.2); } to { transform: scaleX(1); } }
+        }
 
         @media (max-width: 980px) {
             .nav__links { gap: 0.75rem; }
@@ -1749,7 +1747,7 @@
         @media (prefers-reduced-motion: reduce) {
             html { scroll-behavior: auto; }
             *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
-            .motion-ready .reveal-item { opacity: 1; transform: none; }
+
         }
         .cms-unavailable-state {
             display: none;
@@ -2267,6 +2265,7 @@
         root.innerHTML = children.map(function(category) {
             return '<button class="products__subtab' + (category.slug === categorySlug ? ' active' : '') + '" data-category="' + escapeHtml(category.slug) + '" role="tab">' + escapeHtml(category.title) + '</button>';
         }).join('');
+        root.querySelectorAll('[role=tab]').forEach(function(tab) { tab.setAttribute('aria-selected', String(tab.classList.contains('active'))); });
         bindProductTabs();
     }
 
@@ -2345,7 +2344,8 @@
             if (productMatchesCategory(products[i], cat) && productMatchesFilters(products[i])) filtered.push(products[i]);
         }
         if (!filtered.length) {
-            grid.innerHTML = '<p class="products__empty">' + escapeHtml(siteCopyText('products.empty', 'V této kategorii teď připravujeme ukázky. Rádi vám ale podobný výrobek navrhneme na míru.')) + '</p>';
+            var hasFilters = productFilters.wood !== 'all' || productFilters.availability !== 'all' || productFilters.use !== 'all' || productFilters.priceMin !== null || productFilters.priceMax !== null || Object.keys(productFilters.custom).some(function(key) { return productFilters.custom[key] !== 'all'; });
+            grid.innerHTML = '<p class="products__empty">' + escapeHtml(hasFilters ? 'Vybraným filtrům neodpovídá žádný výrobek. Změňte filtry nebo je vymažte.' : siteCopyText('products.empty', 'V této kategorii teď připravujeme ukázky. Rádi vám ale podobný výrobek navrhneme na míru.')) + '<br><a href="#custom">Domluvit výrobu na míru</a></p>';
             return;
         }
         var html = '';
@@ -2391,6 +2391,7 @@
                 break;
             }
         }
+        tabs.forEach(function(tab) { tab.setAttribute('aria-selected', String(tab.classList.contains('active'))); });
         renderProductSubtabs(cat);
         renderProductCategoryContext(cat);
         renderProducts(cat);
@@ -2583,6 +2584,7 @@
         }
         root.innerHTML = html;
         root.hidden = false;
+        root.querySelectorAll('[role=tab]').forEach(function(tab) { tab.setAttribute('aria-selected', String(tab.classList.contains('active'))); });
         bindBlogTabs();
     }
 
@@ -2595,7 +2597,7 @@
             return categorySlug === 'all' || blogCategorySlugs(post).indexOf(categorySlug) !== -1;
         });
         if (!filtered.length) {
-            root.innerHTML = '<p class="products__empty">' + escapeHtml(siteCopyText('blog.empty', 'Články z dílny teprve připravujeme.')) + '</p>';
+            root.innerHTML = '<p class="products__empty">' + escapeHtml(categorySlug !== 'all' ? 'V této kategorii zatím nejsou články. Vyberte jinou kategorii nebo Vše.' : siteCopyText('blog.empty', 'Články z dílny teprve připravujeme.')) + '</p>';
             return;
         }
         root.innerHTML = filtered.map(function(post) {
@@ -2605,9 +2607,9 @@
             var meta = categoryNames.join(' / ') || formatDate(post.published_at) || 'Blog';
             var imgHtml = image
                 ? '<img src="' + escapeHtml(image) + '" alt="' + escapeHtml(imageAlt) + '" style="width:100%;height:100%;object-fit:cover;">'
-                : '<span>' + escapeHtml(post.title) + '</span>';
-            return '<a href="' + escapeHtml(blogPostUrl(post)) + '" class="blog-card" data-blog-slug="' + escapeHtml(post.slug || post.id) + '">' +
-                '<div class="blog-card__image">' + imgHtml + '</div>' +
+                : '';
+            return '<a href="' + escapeHtml(blogPostUrl(post)) + '" class="blog-card' + (image ? '' : ' blog-card--text-only') + '" data-blog-slug="' + escapeHtml(post.slug || post.id) + '">' +
+                (image ? '<div class="blog-card__image">' + imgHtml + '</div>' : '') +
                 '<div class="blog-card__body">' +
                 '<div class="blog-card__meta">' + escapeHtml(meta) + '</div>' +
                 '<h3 class="blog-card__title">' + escapeHtml(post.title) + '</h3>' +
@@ -2620,6 +2622,7 @@
         var tabs = document.querySelectorAll('.blog__tab');
         for (var i = 0; i < tabs.length; i++) {
             tabs[i].classList.toggle('active', tabs[i].getAttribute('data-blog-category') === categorySlug);
+            tabs[i].setAttribute('aria-selected', String(tabs[i].classList.contains('active')));
         }
         renderBlogPosts(categorySlug);
     }
@@ -3265,46 +3268,20 @@
     }
     updateNavigation();
     window.addEventListener('scroll', updateNavigation, { passive: true });
-
-    if (!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-    document.body.classList.add('motion-ready');
-    var revealObserver = new IntersectionObserver(function(entries) {
-        entries.forEach(function(entry) {
-            if (!entry.isIntersecting) return;
-            entry.target.classList.add('reveal-visible');
-            revealObserver.unobserve(entry.target);
-        });
-    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
-
-    function registerRevealItems(root) {
-        var scope = root || document;
-        var items = scope.querySelectorAll(
-            '.about__text, .about__image, .products__title, .products__intro, .products__filters, ' +
-            '.product-card, .blog__title, .blog__intro, .blog-card, .author__image, .author__text, ' +
-            '.custom__images, .custom__title, .custom__text, .custom__subtext, .custom__contact, ' +
-            '.custom__social, .custom__map'
-        );
-        items.forEach(function(item, index) {
-            if (item.classList.contains('reveal-item')) return;
-            item.classList.add('reveal-item');
-            item.style.setProperty('--reveal-delay', Math.min(index % 4, 3) * 70 + 'ms');
-            revealObserver.observe(item);
-        });
-    }
-
-    registerRevealItems(document);
-    var contentObserver = new MutationObserver(function(mutations) {
-        mutations.forEach(function(mutation) {
-            mutation.addedNodes.forEach(function(node) {
-                if (node.nodeType === 1) registerRevealItems(node.parentElement || node);
-            });
-        });
+    // Arrow keys move between category choices; Enter/Space activates the choice.
+    document.addEventListener('keydown', function(event) {
+        var tab = event.target.closest('[role="tab"]');
+        if (!tab || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        var siblings = Array.from(tab.parentElement.querySelectorAll('[role="tab"]'));
+        var index = siblings.indexOf(tab);
+        if (event.key === 'Home') index = 0;
+        else if (event.key === 'End') index = siblings.length - 1;
+        else index = (index + (event.key === 'ArrowRight' ? 1 : -1) + siblings.length) % siblings.length;
+        event.preventDefault();
+        siblings[index].focus();
     });
-    ['products-grid', 'blog-grid'].forEach(function(id) {
-        var container = document.getElementById(id);
-        if (container) contentObserver.observe(container, { childList: true });
-    });
+
+
 })();
 </script>
 

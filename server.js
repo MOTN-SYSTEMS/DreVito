@@ -2174,14 +2174,14 @@ function adminLayout(title, content) {
     }
     .content {
       padding: clamp(30px, 4.5vw, 68px);
-      animation: admin-rise 0.45s ease both;
+      animation: none;
     }
     .content > h1 {
       max-width: 980px;
       margin-bottom: 14px;
-      font-size: clamp(2.8rem, 5.5vw, 5.35rem);
+      font-size: clamp(2.3rem, 4vw, 3.6rem);
       line-height: 0.95;
-      letter-spacing: -0.055em;
+      letter-spacing: -0.03em;
       text-wrap: balance;
     }
     .content > p {
@@ -2515,10 +2515,19 @@ function adminLayout(title, content) {
       background: rgba(222, 210, 193, 0.16);
       text-align: center;
     }
-    @keyframes admin-rise {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
+    /* Quiet shared controls across every CMS editor. */
+    ::selection { background: #ded2c1; color: #2b2118; }
+    input, textarea { caret-color: var(--accent-dark); }
+    .admin-nav .button--ghost { background: transparent; box-shadow: none; min-height: 44px; }
+    .admin-nav .button--web { background: #e7c696; }
+    .button:hover { transform: none; }
+    .button:active:not(:disabled) { transform: scale(0.98); }
+    .button:disabled { cursor: not-allowed; box-shadow: none; }
+    .button--small { min-height: 44px; }
+    .product-row, .blog-row, .category-row, .site-content-row { overflow-wrap: anywhere; }
+    .content > p { max-width: 72ch; }
+    :focus-visible { outline-color: #7b4726 !important; }
+    .masthead :focus-visible { outline-color: #e7c696 !important; }
     @media (max-width: 1180px) {
       .masthead { align-items: flex-start; flex-direction: column; }
       .admin-nav { justify-content: flex-start; }
@@ -9897,7 +9906,7 @@ function renderPublicProductPage(product, statusCode = 200) {
     }
     .product-visual-placeholder { display: grid; place-items: center; padding: 28px; color: var(--muted); text-align: center; }
     .eyebrow { margin: 0 0 16px; color: var(--accent-dark); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; }
-    h1 { margin: 0 0 22px; font: 600 clamp(3.25rem, 7vw, 6.6rem)/0.92 var(--display); letter-spacing: -0.052em; text-wrap: balance; }
+    h1 { margin: 0 0 22px; font: 600 clamp(3.25rem, 7vw, 6.6rem)/0.92 var(--display); letter-spacing: -0.03em; text-wrap: balance; }
     .summary { max-width: 620px; margin: 0 0 28px; color: var(--muted); font-size: clamp(1rem, 1.7vw, 1.2rem); }
     .purchase-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 22px 0; border-top: 1px solid rgba(43, 33, 24, 0.13); border-bottom: 1px solid rgba(43, 33, 24, 0.13); }
     .price { display: block; font: 600 clamp(1.65rem, 3vw, 2.35rem)/1 var(--display); }
@@ -10258,12 +10267,8 @@ function renderPublicBlogPostPage(post, statusCode = 200) {
       object-fit: cover;
     }
     .article-body {
-      max-width: 760px;
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: clamp(24px, 5vw, 44px);
-      box-shadow: 0 14px 40px rgba(61, 43, 31, 0.09);
+      max-width: 70ch;
+      overflow-wrap: anywhere;
     }
     .article-body p {
       margin: 0 0 18px;
@@ -10291,8 +10296,14 @@ function renderPublicBlogPostPage(post, statusCode = 200) {
     }
     .button--primary {
       background: var(--accent);
-      color: #fff;
+      color: var(--ink);
     }
+    ::selection { background: #ded2c1; color: #2b2118; }
+    :focus-visible { outline: 3px solid #7b4726; outline-offset: 4px; }
+    .topbar :focus-visible { outline-color: #e7c696; }
+    a { text-underline-offset: 0.2em; }
+    .button { transition: background-color 150ms ease; }
+    .button:hover { background: #ded2c1; }
     @media (max-width: 640px) {
       .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
       .brand img { width: 48px; height: 48px; }
