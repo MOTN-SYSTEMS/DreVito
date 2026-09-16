@@ -3918,7 +3918,7 @@ function homepageEditorPage(session) {
       <aside class="admin-guide" aria-label="Jak zveřejnit změny" style="margin-top:-6px">
         <strong>Co uvidí návštěvníci?</strong>
         <p>„Uložit jen koncept“ ponechá změny pouze v administraci. Až tlačítko <strong>Publikovat na web</strong> uloží stejnou verzi jako živou a změny se díky vypnuté veřejné cache projeví ihned.</p>
-        <p>Editor dovoluje měnit texty a fotografie jen uvnitř připravených bloků; základní vzhled, typografie a povinný úvod zůstávají chráněné.</p>
+        <p>Editor dovoluje měnit texty a fotografie jen uvnitř připravených bloků; základní vzhled, typografie a povinný úvod zůstávají chráněné.</p><p><a href="/admin/homepage?block=blog">Upravit přesný text Z dílny na homepage</a> · <a href="/admin/homepage?block=custom">Fotografie zakázkové výroby</a></p>
       </aside>
 
       <div class="homepage-editor__message" id="homepage-message" hidden aria-live="assertive"></div>
@@ -3966,8 +3966,8 @@ function homepageEditorPage(session) {
       var saveButton = document.getElementById('homepage-save');
       var publishButton = document.getElementById('homepage-publish');
       var resetButton = document.getElementById('homepage-reset');
-      var state = { layout: { version: 1, blocks: [] }, selectedId: '', revision: null, dirty: false, draftDiffers: false, busy: false, loaded: false, draggedId: '' };
-      var fixedLabels = { hero: 'Úvodní obrazovka', about: 'Řemeslo s tradicí', products: 'Výrobky', blog: 'Blog', author: 'Příběh za značkou', custom: 'Zakázková výroba a kontakt' };
+      var state = { layout: { version: 1, blocks: [] }, selectedId: new URLSearchParams(window.location.search).get('block') || '', revision: null, dirty: false, draftDiffers: false, busy: false, loaded: false, draggedId: '' };
+      var fixedLabels = { hero: 'Úvodní obrazovka', about: 'Udržitelné lesnictví', products: 'Výrobky', blog: 'Z dílny – text na homepage', author: 'Příběh za značkou', custom: 'Zakázková výroba a kontakt' };
 
       workspace.inert = true;
 
@@ -4093,7 +4093,7 @@ function homepageEditorPage(session) {
           : '<span>Zatím bez fotografie</span>';
         return '<div class="homepage-image-field" data-image-slot="' + escapeHtml(slot) + '"><strong>' + escapeHtml(label) + '</strong><div class="homepage-image-field__preview">' + preview + '</div>' +
           '<div class="homepage-image-field__actions"><label>Nahradit fotografii<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-image-upload="' + escapeHtml(slot) + '"></label>' +
-          (image.url ? '<button type="button" data-image-remove="' + escapeHtml(slot) + '">Odebrat z bloku</button>' : '') + '</div>' +
+          (image.url || slot.indexOf('images.') === 0 ? '<button type="button" data-image-remove="' + escapeHtml(slot) + '">Odebrat z bloku</button>' : '') + '</div>' +
           '<label>Popis fotografie<input value="' + escapeHtml(image.alt || '') + '" data-image-alt="' + escapeHtml(slot) + '"><small>Krátký popis pomáhá lidem, kteří obrázek nevidí.</small></label></div>';
       }
 
@@ -4122,7 +4122,7 @@ function homepageEditorPage(session) {
         } else if (block.id === 'products' || block.id === 'blog') {
           fields += '<div class="homepage-inspector__hint">Karty v této části se doplňují automaticky ze samostatné správy ' + (block.id === 'products' ? '<a href="/admin/products">výrobků</a>' : '<a href="/admin/blog-posts">článků</a>') + '. Zde měníte jen nadpis, úvod a umístění celého bloku.</div>';
           fields += inputField('Nadpis sekce', 'title', content.title, 'text');
-          fields += inputField('Úvodní text', 'body', content.body, 'textarea');
+          fields += inputField(block.id === 'blog' ? 'Text Z dílny na homepage' : 'Úvodní text', 'body', content.body, 'textarea', 'Prázdný řádek vytvoří odstavec. Zalomení řádků zůstávají zachována.');
         } else if (block.id === 'author') {
           fields += inputField('Nadpis', 'title', content.title, 'text');
           fields += inputField('Výrazný úvod', 'lead', content.lead, 'textarea');
@@ -4133,8 +4133,12 @@ function homepageEditorPage(session) {
           fields += inputField('Nadpis', 'title', content.title, 'text');
           fields += inputField('Hlavní text', 'body', content.body, 'textarea');
           fields += inputField('Doplňující text', 'secondary_body', content.secondary_body, 'textarea');
-          fields += imageField(block, 'images.0', 'První fotografie');
-          fields += imageField(block, 'images.1', 'Druhá fotografie');
+          fields += '<div class="homepage-inspector__hint">Galerie zakázkové výroby: až 12 fotografií. Přidejte, nahraďte, odeberte nebo seřaďte fotografie. Změny se projeví po publikování.</div>';
+          (content.images || []).forEach(function(image, index) {
+            fields += imageField(block, 'images.' + index, 'Fotografie ' + (index + 1));
+            fields += '<div class="homepage-image-field__actions"><button type="button" data-gallery-move="' + index + '" data-direction="-1"' + (index === 0 ? ' disabled' : '') + '>Posunout fotografii výš</button><button type="button" data-gallery-move="' + index + '" data-direction="1"' + (index === content.images.length - 1 ? ' disabled' : '') + '>Posunout fotografii níž</button></div>';
+          });
+          fields += '<button type="button" data-gallery-add' + (content.images.length >= 12 ? ' disabled' : '') + '>Přidat fotografii</button>';
           fields += '<div class="homepage-inspector__hint">Telefon, e-mail, sociální sítě a mapa zůstávají bezpečně nastavené ve webu.</div>';
         } else {
           fields += inputField('Malý nadpis', 'eyebrow', content.eyebrow, 'text');
@@ -4341,12 +4345,27 @@ function homepageEditorPage(session) {
 
       inspector.addEventListener('click', function(event) {
         if (!state.loaded || state.busy) return;
+        var selectedBlock = blockById(state.selectedId);
+        if (selectedBlock && selectedBlock.id === 'custom' && event.target.hasAttribute('data-gallery-add')) {
+          if (selectedBlock.content.images.length >= 12) return;
+          selectedBlock.content.images.push({ url: '', alt: '', media_id: '' });
+          markDirty(); renderCards(); renderInspector(); return;
+        }
+        var moveIndex = event.target.getAttribute('data-gallery-move');
+        if (selectedBlock && selectedBlock.id === 'custom' && moveIndex !== null) {
+          var from = Number(moveIndex);
+          var to = from + Number(event.target.getAttribute('data-direction'));
+          var images = selectedBlock.content.images;
+          if (to < 0 || to >= images.length) return;
+          images.splice(to, 0, images.splice(from, 1)[0]);
+          markDirty(); renderCards(); renderInspector(); return;
+        }
         var slot = event.target.getAttribute('data-image-remove');
         if (!slot) return;
         var block = blockById(state.selectedId);
         if (!block) return;
         var empty = { url: '', alt: '', media_id: '' };
-        if (slot.indexOf('images.') === 0) block.content.images[Number(slot.split('.')[1])] = empty;
+        if (slot.indexOf('images.') === 0) block.content.images.splice(Number(slot.split('.')[1]), 1);
         else block.content.image = empty;
         markDirty();
         renderCards();
@@ -4462,7 +4481,7 @@ function productCategoriesAdminPage(session) {
               <div class="category-image-preview" id="category-image-preview">Zatím bez obrázku</div>
               <input id="category-image-upload" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
               <div class="actions" style="margin-top:0;justify-content:flex-start">
-                <button class="button button--secondary button--small" id="category-image-upload-button" type="button">Nahrát / změnit</button>
+                <button class="button button--secondary button--small" id="category-image-upload-button" type="button">Nahrát / nahradit fotografii</button>
                 <button class="button button--danger button--small" id="category-image-remove" type="button" hidden>Odebrat</button>
               </div>
               <label>
@@ -4475,7 +4494,7 @@ function productCategoriesAdminPage(session) {
             <input id="category-image-alt" name="image_alt" type="hidden">
             <input id="category-image-media-id" name="image_media_id" type="hidden">
             <div class="actions">
-              <button class="button" type="submit">Uložit</button>
+              <button class="button" type="submit">Uložit kategorii</button>
               <button class="button button--secondary" id="category-reset" type="button">Nová</button>
             </div>
           </form>
@@ -4486,7 +4505,7 @@ function productCategoriesAdminPage(session) {
             <h2>Seznam kategorií</h2>
             <button class="button button--secondary button--small" id="category-reload" type="button">Načíst znovu</button>
           </div>
-          <p class="product-meta" style="margin-top:8px">Podkategorie jsou vždy zobrazené přímo pod svou hlavní kategorií.</p>
+          <p class="product-meta" style="margin-top:8px">Rozbalte podkategorie pod příslušnou hlavní kategorií. Tlačítkem „Upravit / fotografie“ otevřete název, obrázek a viditelnost.</p>
           <div id="categories-root" class="empty-state">Načítám kategorie...</div>
         </section>
       </div>
@@ -4716,7 +4735,7 @@ function productCategoriesAdminPage(session) {
               (hierarchyProblem ? '<div class="alert" style="margin:8px 0 0">' + escapeHtml(hierarchyProblem) + '</div>' : '') +
               '<div class="category-meta"><strong>' + assignedProducts.length + '</strong> výrobků' + (productNames ? ': ' + escapeHtml(productNames) + (assignedProducts.length > 5 ? '…' : '') : '') + '</div>' +
               '<div class="category-actions">' +
-                '<button class="button button--small" type="button" data-action="edit" data-id="' + escapeHtml(category.id) + '">Upravit</button>' +
+                '<button class="button button--small" type="button" data-action="edit" data-id="' + escapeHtml(category.id) + '">Upravit / fotografie</button>' +
                 actionHtml +
               '</div>' +
             '</div>' +
@@ -4760,7 +4779,7 @@ function productCategoriesAdminPage(session) {
           });
           return '<section class="category-tree-group" aria-label="' + escapeHtml(parent.title) + '">' +
             renderCategoryRow(parent) +
-            (children.length ? '<div class="category-tree-children" role="group" aria-label="Podkategorie ' + escapeHtml(parent.title) + '">' + children.map(function(child) { return renderCategoryRow(child); }).join('') + '</div>' : '') +
+            (children.length ? '<details><summary style="cursor:pointer;padding:12px;font-weight:700">Podkategorie (' + children.length + ') — ' + escapeHtml(parent.title) + '</summary><div class="category-tree-children" role="group" aria-label="Podkategorie ' + escapeHtml(parent.title) + '">' + children.map(function(child) { return renderCategoryRow(child); }).join('') + '</div></details>' : '') +
           '</section>';
         }).join('') + (categories.some(function(category) { return !renderedIds.has(category.id); })
           ? '<section class="category-tree-group" aria-label="Kategorie vyžadující opravu"><p class="alert" style="margin:0 0 10px"><strong>Hierarchii těchto kategorií je potřeba opravit.</strong> Žádná data nejsou skrytá; otevřete kategorii a nastavte ji jako hlavní nebo vyberte platnou hlavní kategorii.</p><div class="category-tree-children">' + categories.filter(function(category) { return !renderedIds.has(category.id); }).map(function(category) { return renderCategoryRow(category, hierarchyProblem(category)); }).join('') + '</div></section>'
@@ -4943,7 +4962,7 @@ function blogCategoriesAdminPage(session) {
     ${adminMasthead(session)}
     <div class="content">
       <h1>Kategorie blogu</h1>
-      <p>Správa témat blogu pro pozdější filtrování a přiřazení článků.</p>
+      <p>Témata pro třídění jednotlivých článků. Kategorie „Z dílny“ nemění úvodní text na homepage. Ten upravíte v <a href="/admin/homepage?block=blog">Domovská stránka → Z dílny – text na homepage</a>.</p>
       <div id="category-message" hidden></div>
 
       <div class="category-layout" id="category-app">
@@ -5297,7 +5316,7 @@ function productsAdminPage(session) {
     ${adminMasthead(session)}
     <div class="content">
       <h1>Výrobky</h1>
-      <p>Správa výrobků, kategorií, více fotek a publikace pro veřejný web.</p>
+      <p>Zde spravujete karty v části „Naše výrobky“ na homepage i jejich detaily. Přidejte výrobek a fotografie, přiřaďte kategorii a publikujte jej. Skrytí nebo archivace kartu odstraní z veřejného katalogu. Prázdný katalog nezobrazuje ukázkové výrobky.</p>
       <div id="product-message" hidden></div>
 
       <div class="product-layout" id="product-app">
@@ -5840,7 +5859,8 @@ function blogPostsAdminPage(session) {
     ${adminMasthead(session)}
     <div class="content">
       <h1>Články blogu</h1>
-      <p>Správa článků, více fotek, kategorií a publikace pro blog.</p>
+      <p>Jednotlivé články a jejich fotografie, například „O tvůrci“. Kategorie články třídí podle tématu. Archiv obsahuje skryté položky, které lze obnovit.</p>
+      <aside class="admin-guide"><strong>Hledáte text nad články na homepage?</strong><p>Upravíte jej pouze v <a href="/admin/homepage?block=blog">Domovská stránka → Z dílny – text na homepage</a>. Článek „O tvůrci“ a sekce „Příběh za značkou“ jsou samostatné: text sekce upravíte v <a href="/admin/homepage?block=author">Domovská stránka → Příběh za značkou</a>.</p></aside>
       <div id="blog-message" hidden></div>
 
       <div class="blog-layout" id="blog-app">
@@ -7840,7 +7860,7 @@ function normalizeHomepageFixedBlock(definition, rawBlock = {}) {
     content.image = normalizeHomepageImage(rawContent.image, defaults.image);
   } else if (definition.id === 'products' || definition.id === 'blog') {
     content.title = homepageContentField(rawContent, 'title', defaults.title, 180);
-    content.body = homepageContentField(rawContent, 'body', defaults.body, 1600);
+    content.body = homepageContentField(rawContent, 'body', defaults.body, definition.id === 'blog' ? 12000 : 1600);
   } else if (definition.id === 'author') {
     const title = homepageContentField(rawContent, 'title', defaults.title, 180);
     content.title = title === LEGACY_AUTHOR_TITLE ? CONFIRMED_AUTHOR_TITLE : title;
@@ -7853,7 +7873,8 @@ function normalizeHomepageFixedBlock(definition, rawBlock = {}) {
     content.body = homepageContentField(rawContent, 'body', defaults.body, 2600);
     content.secondary_body = homepageContentField(rawContent, 'secondary_body', defaults.secondary_body, 1600);
     const rawImages = Array.isArray(rawContent.images) ? rawContent.images : defaults.images;
-    content.images = [0, 1].map((index) => normalizeHomepageImage(rawImages[index], defaults.images[index]));
+    if (rawImages.length > 12) throw new Error('Galerie může obsahovat nejvýše 12 fotografií.');
+    content.images = rawImages.map((image) => normalizeHomepageImage(image, { url: '', alt: '', media_id: '' }));
   }
 
   return {
@@ -8763,7 +8784,7 @@ function previewAdminReviewPage(pathname) {
         <h1>Obrázky se upravují přímo u obsahu</h1>
         <p>Starý samostatný správce médií byl vypnutý, protože mohl uložit obrázek bez změny veřejného webu. Vyberte místo, kde má být obrázek použit.</p>
         <div class="admin-tools">
-          <a class="admin-tool" href="/admin/homepage"><span>Homepage</span><strong>Domovská stránka</strong><p>Úvodní fotografie a obrázky obsahových bloků.</p></a>
+          <a class="admin-tool" href="/admin/homepage"><span>Homepage</span><strong>Domovská stránka</strong><p>Texty a fotografie homepage, včetně úvodu Z dílny a galerie zakázkové výroby.</p></a>
           <a class="admin-tool" href="/admin/product-categories"><span>Katalog</span><strong>Kategorie</strong><p>Obrázek prezentace konkrétní kategorie.</p></a>
           <a class="admin-tool" href="/admin/products"><span>Katalog</span><strong>Výrobky</strong><p>Fotografie uložené u konkrétního výrobku.</p></a>
           <a class="admin-tool" href="/admin/blog-posts"><span>Blog</span><strong>Články</strong><p>Fotografie uložené u konkrétního článku.</p></a>
@@ -11006,7 +11027,7 @@ async function handleAdmin(req, res, url) {
         <h1>Obrázky se upravují přímo u obsahu</h1>
         <p>Starý samostatný správce médií byl vypnutý, protože mohl uložit obrázek bez změny veřejného webu. Vyberte místo, kde má být obrázek použit.</p>
         <div class="admin-tools">
-          <a class="admin-tool" href="/admin/homepage"><span>Homepage</span><strong>Domovská stránka</strong><p>Úvodní fotografie a obrázky obsahových bloků.</p></a>
+          <a class="admin-tool" href="/admin/homepage"><span>Homepage</span><strong>Domovská stránka</strong><p>Texty a fotografie homepage, včetně úvodu Z dílny a galerie zakázkové výroby.</p></a>
           <a class="admin-tool" href="/admin/product-categories"><span>Katalog</span><strong>Kategorie</strong><p>Obrázek prezentace konkrétní kategorie.</p></a>
           <a class="admin-tool" href="/admin/products"><span>Katalog</span><strong>Výrobky</strong><p>Fotografie uložené u konkrétního výrobku.</p></a>
           <a class="admin-tool" href="/admin/blog-posts"><span>Blog</span><strong>Články</strong><p>Fotografie uložené u konkrétního článku.</p></a>

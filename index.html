@@ -1189,11 +1189,14 @@
         .about__image {
             --about-frame-shape: 50%;
             position: relative;
+            width: min(100%, 500px);
+            justify-self: center;
+            margin-inline: auto;
         }
         .about__image::before {
             content: '';
             position: absolute;
-            inset: -10px 14px 10px -14px;
+            inset: -8px;
             border: 1px solid rgba(182, 120, 66, 0.52);
             border-radius: var(--about-frame-shape);
             transform: none;
@@ -1201,7 +1204,7 @@
         .about__image-placeholder {
             position: relative;
             aspect-ratio: 4 / 5;
-            max-height: calc(100svh - var(--nav-height));
+            overflow: hidden;
             padding: 0;
             border-radius: var(--about-frame-shape);
             box-shadow: none;
@@ -1747,6 +1750,13 @@
         body.cms-data-unavailable .cms-unavailable-state { display: grid; }
         body.cms-data-unavailable .nav__links,
         body.cms-data-unavailable .nav__dropdown { display: none !important; }
+
+        #products-filters[hidden], .custom__images[hidden] { display: none !important; }
+        .blog__intro p { margin: 0 0 1.25em; white-space: pre-line; }
+        .about__lead, .about__body, .hero__tagline, .custom__text, .custom__subtext { white-space: pre-line; }
+        .custom__images.custom__images--gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; min-height: 0; }
+        .custom__images.custom__images--gallery .custom__image { position: relative; inset: auto; width: 100%; max-width: none; transform: none; }
+        @media (max-width: 600px) { .custom__images.custom__images--gallery { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body class="cms-loading">
@@ -1903,7 +1913,7 @@
                 </div>
                 <img class="products__category-image" id="products-category-image" alt="" hidden>
             </article>
-            <div class="products__filters" id="products-filters" aria-label="Filtrování výrobků">
+            <div class="products__filters" id="products-filters" aria-label="Filtrování výrobků" hidden>
                 <div class="products__filters-heading">
                     <strong class="products__filters-title">Upřesněte svůj výběr</strong>
                     <span class="products__filters-note">Najděte výrobek přesně pro vás</span>
@@ -1927,7 +1937,7 @@
     <section class="blog" id="blog" data-homepage-block-id="blog">
         <div class="blog__container">
             <h2 class="section-title blog__title">Z dílny</h2>
-            <p class="blog__intro" id="blog-intro">Poznámky o dřevě, řemesle a novinkách z dílny Dřevito.</p>
+            <div class="blog__intro" id="blog-intro"><p>Poznámky o dřevě, řemesle a novinkách z dílny Dřevito.</p></div>
             <div class="blog__tabs" id="blog-tabs" role="tablist" aria-label="Kategorie článků" hidden></div>
             <div class="blog__grid" id="blog-grid"></div>
             <article class="content-detail" id="blog-detail" aria-live="polite"></article>
@@ -2035,16 +2045,8 @@
         ['your-design', 'vyroba-podle-vaseho-navrhu', 'Výroba podle vašeho návrhu', 'custom-made', 10], ['photo', 'gravirovani-fotografie', 'Gravírování fotografie', 'custom-made', 20], ['graphic', 'gravirovani-grafiky-nebo-loga', 'Gravírování grafiky nebo loga', 'custom-made', 30], ['music', 'hudebni-nastroje', 'Hudební nástroje', 'custom-made', 40], ['your-item', 'gravirovani-vasich-predmetu', 'Gravírování vašich předmětů', 'custom-made', 50], ['individual', 'individualni-navrh-vyrobku', 'Individuální návrh výrobku', 'custom-made', 60]
     ].forEach(function(category) { addDefaultCategory(category[0], category[1], category[2], category[3], category[4]); });
 
-    var products = [
-        { id: 'P00002', slug: 'cajne-stolicky', name: 'Čajový stolek', desc: 'Dřevěný čajový stoleček s vyřezávaným motivem.', description: 'Dřevěný čajový stoleček s vyřezávaným motivem.', price: 1790, category: 'cajove-stolky-a-oltarky', availability: 'made_to_order', use_context: ['interior'], wood_types: [], image: 'cajne-stolicky.JPG' },
-        { id: 'P00016', slug: 'dekoracni-tabulka', name: 'Dekorační tabulka', desc: 'Dekorační tabulka s vyřezávaným motivem.', description: 'Dekorační tabulka s vyřezávaným motivem.', price: 1555, category: 'svicelenky-a-stinoherni-objekty', availability: 'made_to_order', use_context: ['interior'], wood_types: [], image: 'dekoracni-tabulka.JPG' },
-        { id: 'P00004', slug: 'krabicka', name: 'Krabička', desc: 'Zasouvací krabička z masivního dřeva.', description: 'Zasouvací krabička z masivního dřeva.', price: 1111, category: 'krabicky', availability: 'made_to_order', use_context: ['interior'], wood_types: [], image: 'krabicka.JPG' },
-        { id: 'P00020', slug: 'kun', name: 'Kůň', desc: 'Dřevěná dekorace koně.', description: 'Dřevěná dekorace koně.', price: 0, category: 'zvirata-a-figuralni-motivy', availability: 'made_to_order', use_context: ['interior'], wood_types: [], image: 'kun-dekorace.JPG' },
-        { id: 'P00023', slug: 'dekorace-zena', name: 'Dekorace žena', desc: 'Dřevěná dekorace ženy.', description: 'Dřevěná dekorace ženy.', price: 0, category: 'zvirata-a-figuralni-motivy', availability: 'made_to_order', use_context: ['interior'], wood_types: [], image: 'dekorace-zena.JPG' },
-        { id: 'P00018', slug: 'stojan-na-telefon', name: 'Stojan na telefon', desc: 'Stojan na telefon z masivního dřeva.', description: 'Stojan na telefon z masivního dřeva.', price: 2000, category: 'stojanky-na-telefon', availability: 'made_to_order', use_context: ['interior'], wood_types: [], image: 'stojan-na-telefon.JPG' },
-        { id: 'P00022', slug: 'hracka-auticko', name: 'Hračka autíčko', desc: 'Dřevěná hračka autíčko.', description: 'Dřevěná hračka autíčko.', price: 0, category: 'drevene-hracky', availability: 'made_to_order', use_context: ['interior'], wood_types: [], image: 'hracka-auticko.JPG' }
-    ];
-    var defaultProducts = products.slice();
+    // Public cards are authored in the CMS; an empty catalog is not sample stock.
+    var products = [];
 
     var defaultBlogPosts = [
         {
@@ -2725,7 +2727,7 @@
         if (id === 'custom') {
             return homepageFieldsAreStrings(content, ['title', 'body', 'secondary_body'])
                 && Array.isArray(content.images)
-                && content.images.length === 2
+                && content.images.length <= 12
                 && content.images.every(homepageImageIsValid);
         }
         return false;
@@ -2853,7 +2855,16 @@
 
         if (block.id === 'blog') {
             setHomepageElementText(section, '.blog__title', content.title, 180);
-            setHomepageElementText(section, '.blog__intro', content.body, 1600);
+            var intro = section.querySelector('.blog__intro');
+            if (intro) {
+                intro.replaceChildren();
+                homepageTextValue(content.body, 12000).split(/\n\s*\n/).filter(function(text) { return text.trim(); }).forEach(function(text) {
+                    var paragraph = document.createElement('p');
+                    paragraph.textContent = text.trim();
+                    intro.appendChild(paragraph);
+                });
+                intro.hidden = !intro.textContent;
+            }
             return;
         }
 
@@ -2872,8 +2883,24 @@
             setHomepageElementText(section, '.custom__title', content.title, 180);
             setHomepageElementText(section, '.custom__text', content.body, 2600);
             setHomepageElementText(section, '.custom__subtext', content.secondary_body, 1600);
-            setHomepageImage(section, '.custom__images .custom__image:nth-child(1) img', content.images[0]);
-            setHomepageImage(section, '.custom__images .custom__image:nth-child(2) img', content.images[1]);
+            var gallery = section.querySelector('.custom__images');
+            if (gallery) {
+                gallery.replaceChildren();
+                content.images.forEach(function(photo) {
+                    var url = homepageSafeHref(photo.url, false);
+                    if (!url) return;
+                    var frame = document.createElement('div');
+                    frame.className = 'custom__image';
+                    var image = document.createElement('img');
+                    image.src = url;
+                    image.alt = photo.alt;
+                    image.loading = 'lazy';
+                    frame.appendChild(image);
+                    gallery.appendChild(frame);
+                });
+                gallery.hidden = !gallery.children.length;
+                gallery.classList.toggle('custom__images--gallery', gallery.children.length !== 2);
+            }
         }
     }
 

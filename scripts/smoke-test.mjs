@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { Script } from 'node:vm';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'drevito-smoke-'));
@@ -188,6 +189,13 @@ try {
   check(homepageEditorHtml.includes('id="homepage-editor"') && homepageEditorHtml.includes('Domovská stránka'), 'Authenticated homepage editor did not render.');
   check(homepageEditorHtml.includes('id="homepage-publish" type="button" disabled'), 'Homepage publish control was enabled before initial state loading.');
   check(homepageEditorHtml.includes('data-open-library disabled'), 'Homepage add-block control was enabled before initial state loading.');
+  for (const route of ['/', '/admin/homepage', '/admin/product-categories', '/admin/blog-posts', '/admin/blog-categories']) {
+    const html = await (await request(route, { expectedStatus: 200 })).text();
+    for (const match of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)) {
+      if (match[1].trim()) new Script(match[1], { filename: route });
+    }
+  }
+
 
   const reservedHomepageCreate = await request('/admin/api/site-content', {
     method: 'POST',
@@ -331,6 +339,11 @@ try {
       cta_url: '#contact'
     }
   };
+  const galleryFixture = ['/custom.JPG', '/prods.jpg', '/main.JPG'].map((url, index) => ({ url, alt: 'Gallery ' + index, media_id: '' }));
+  defaultHomepageBlocks.get('custom').content.images = galleryFixture;
+  const paragraphFixture = 'První odstavec.\nDruhý řádek.\n\n' + 'Další klientský text. '.repeat(100);
+  defaultHomepageBlocks.get('blog').content.body = paragraphFixture;
+
   const homepageDraftLayout = {
     version: 1,
     blocks: [
@@ -357,6 +370,12 @@ try {
   check(homepageState.layout.blocks.some((block) => block.id === homepageStory.id), 'Saved homepage draft was missing its story block.');
   check(homepageState.layout.blocks.map((block) => block.id).join(',') === 'hero,blog,about,story-smoke-homepage,author,custom,products', 'Homepage fixed-block reorder was not preserved after normalization.');
 
+  assert.deepEqual(homepageState.layout.blocks.find((block) => block.id === 'custom').content.images.map((image) => image.url), galleryFixture.map((image) => image.url), 'Gallery lost photos after draft save.');
+  check(homepageState.layout.blocks.find((block) => block.id === 'blog').content.body === paragraphFixture.trim(), 'Homepage text lost paragraph breaks or was truncated.');
+  const oversizedGallery = cloneJson(homepageState.layout);
+  oversizedGallery.blocks.find((block) => block.id === 'custom').content.images = Array(13).fill(galleryFixture[0]);
+  await request('/admin/api/homepage/draft', { method: 'PUT', json: { layout: oversizedGallery, expected_revision: homepageState.draft_revision }, expectedStatus: 400 });
+
   const firstHomepageRevision = homepageState.draft_revision;
   const reloadedHomepageState = await jsonRequest('/admin/api/homepage');
   check(reloadedHomepageState.draft_revision === firstHomepageRevision, 'Reloaded homepage draft had a different revision.');
@@ -367,6 +386,7 @@ try {
   check(!publicContent.homepage_layout.blocks.some((block) => block.id === homepageStory.id), 'Saving a draft leaked a story into the public homepage.');
 
   const publishableHomepageLayout = cloneJson(homepageState.layout);
+  publishableHomepageLayout.blocks.find((block) => block.id === 'custom').content.images = [galleryFixture[2], galleryFixture[0]];
   publishableHomepageLayout.blocks.find((block) => block.id === homepageStory.id).content.body = 'Publikovaná verze vlastního bloku.';
   publishableHomepageLayout.blocks.find((block) => block.id === 'blog').content.body = 'Smoke text Z dílny publikovaný z editoru.';
   await new Promise((resolve) => setTimeout(resolve, 10));
@@ -413,6 +433,7 @@ try {
   check(publicContent.homepage_layout.blocks.find((block) => block.id === 'hero')?.content.image?.url === '/main.JPG', 'Published legacy homepage media lost its embedded compatibility URL.');
   check(publicContent.homepage_layout.blocks.find((block) => block.id === 'hero')?.content.image?.media_id === 'legacy-production-homepage', 'Published legacy homepage media lost its legacy reference.');
   check(publicContent.homepage_layout.blocks.find((block) => block.id === homepageStory.id)?.content.image?.url === '', 'Missing canonical homepage media used a stale embedded URL.');
+  assert.deepEqual(publicContent.homepage_layout.blocks.find((block) => block.id === 'custom').content.images.map((image) => image.url), [galleryFixture[2].url, galleryFixture[0].url], 'Gallery removal/reordering did not reach the published API.');
   const publishedHomepageLayout = cloneJson(publicContent.homepage_layout);
 
   const changedDraftLayout = cloneJson(homepageState.layout);
