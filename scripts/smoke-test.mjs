@@ -790,9 +790,11 @@ try {
   check(productHtml.includes('mailto:info@drevito.cz') && productHtml.includes('Poptat výrobek'), 'Product detail page did not contain the direct enquiry action.');
   check(!/<a[^>]+href=["']https?:\/\//i.test(productHtml), 'Product detail page unexpectedly linked away from Dřevito.');
 
+  check((await jsonRequest(`/admin/api/qr?type=products&id=${product.id}`)).url === `https://www.drevito.cz/vyrobek/${productPayload.slug}`, 'Product QR URL was incorrect.');
   await jsonRequest(`/admin/api/products/${product.id}/archive`, { method: 'POST', json: {} });
   publicContent = await jsonRequest('/api/public-content?locale=cs', { authenticated: false });
   check(!publicContent.products.some((item) => item.id === product.id), 'Archived product remained public.');
+  await request(`/admin/api/qr?type=products&id=${product.id}`, { expectedStatus: 409 });
   await request(`/vyrobek/${productPayload.slug}`, { authenticated: false, expectedStatus: 404 });
 
   await jsonRequest(`/admin/api/products/${product.id}/restore`, { method: 'POST', json: {} });
@@ -859,9 +861,27 @@ try {
   check(blogHtml.includes(blogPayload.title), 'Blog detail page did not contain the article title.');
   check(blogHtml.includes(blogPhotoUpload.photo.url), 'Blog detail page did not render the uploaded image.');
 
+  const qrQuery = `/admin/api/qr?type=blog-posts&id=${blogPost.id}`;
+  await request(qrQuery, { authenticated: false, expectedStatus: 401 });
+  const qrTarget = await jsonRequest(qrQuery);
+  check(qrTarget.url === `https://www.drevito.cz/blog/${blogPayload.slug}`, 'QR did not use the production canonical URL.');
+  for (const format of ['svg', 'png']) {
+    const qrResponse = await request(`${qrQuery}&format=${format}&expectedUrl=${encodeURIComponent(qrTarget.url)}`, { expectedStatus: 200 });
+    check(qrResponse.headers.get('content-type') === (format === 'svg' ? 'image/svg+xml' : 'image/png'), 'Wrong QR content type.');
+    check(qrResponse.headers.get('content-disposition').includes(`.${format}"`), 'QR download filename missing.');
+    const image = await qrResponse.arrayBuffer();
+    check(image.byteLength > 100, 'QR download was empty.');
+  }
+  await request(`${qrQuery}&format=svg&expectedUrl=https://evil.test`, { expectedStatus: 409 });
+  await request(`${qrQuery}&format=html`, { expectedStatus: 400 });
+  await jsonRequest(`/admin/api/blog-posts/${blogPost.id}`, { method: 'PATCH', json: {...blogPayload, title: 'Renamed article'} });
+  check((await jsonRequest(qrQuery)).url === qrTarget.url, 'A title change changed the QR URL.');
+
   await jsonRequest(`/admin/api/blog-posts/${blogPost.id}/archive`, { method: 'POST', json: {} });
   publicContent = await jsonRequest('/api/public-content?locale=cs', { authenticated: false });
   check(!publicContent.blog_posts.some((item) => item.id === blogPost.id), 'Archived blog post remained public.');
+  await request(qrQuery, { expectedStatus: 409 });
+  await request(`${qrQuery}&format=png&expectedUrl=${encodeURIComponent(qrTarget.url)}`, { expectedStatus: 409 });
   await request(`/blog/${blogPayload.slug}`, { authenticated: false, expectedStatus: 404 });
 
   await jsonRequest(`/admin/api/blog-posts/${blogPost.id}/restore`, { method: 'POST', json: {} });

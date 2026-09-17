@@ -4,6 +4,7 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const sharp = require('sharp');
+const { resolveQrTarget, renderQr } = require('./lib/static-qr');
 const { URL } = require('url');
 
 const ROOT_DIR = __dirname;
@@ -67,6 +68,7 @@ const IMAGE_EXTENSIONS = {
 const PUBLIC_STATIC_FILES = new Set([
   'index.html',
   'image-upload-tools.js',
+  'qr-tools.js',
   'autor.JPG',
   'cajne-stolicky.JPG',
   'custom-service.jpg',
@@ -1316,6 +1318,23 @@ async function parseMultipart(req) {
   }
 
   return { fields, files };
+}
+
+function adminQrBlock(type) {
+  return `<section data-qr-type="${escapeHtml(type)}" aria-labelledby="qr-heading" style="min-width:0;border:1px solid var(--line);border-radius:8px;padding:16px;margin:20px 0;">
+    <h3 id="qr-heading">QR kód</h3>
+    <a data-qr-url hidden target="_blank" rel="noopener" style="display:block;overflow-wrap:anywhere;margin-bottom:12px;"></a>
+    <p data-qr-status role="status">QR kód je dostupný po uložení a zveřejnění obsahu.</p>
+    <button class="button button--secondary" data-qr-generate type="button" disabled>Vygenerovat QR kód</button>
+    <div data-qr-result hidden>
+      <img data-qr-preview alt="QR kód veřejné stránky" width="256" height="256" style="display:block;width:256px;max-width:100%;height:auto;margin:16px 0;background:white;">
+      <div class="actions" style="justify-content:flex-start;flex-wrap:wrap;">
+        <button class="button button--secondary" data-qr-download="svg" type="button">Stáhnout SVG</button>
+        <button class="button button--secondary" data-qr-download="png" type="button">Stáhnout PNG</button>
+      </div>
+      <p style="margin-top:12px;">Pro tisk a gravírování použijte SVG. Zachovejte bílý okraj a výrazný kontrast. Před výrobou kód vyzkoušejte v konečné velikosti. Cílovou stránku ponechte veřejnou a její adresu neměňte.</p>
+    </div>
+  </section>`;
 }
 
 function adminLayout(title, content) {
@@ -2585,6 +2604,7 @@ function adminLayout(title, content) {
       }
     }
   </style>
+  <script src="/qr-tools.js"></script>
 </head>
 <body>
   <main class="shell">
@@ -4497,6 +4517,7 @@ function productCategoriesAdminPage(session) {
               <button class="button" type="submit">Uložit kategorii</button>
               <button class="button button--secondary" id="category-reset" type="button">Nová</button>
             </div>
+            ${adminQrBlock('product-categories')}
           </form>
         </section>
 
@@ -4608,6 +4629,7 @@ function productCategoriesAdminPage(session) {
       }
 
       function resetForm() {
+        if (window.drevitoQr) window.drevitoQr.set('');
         editSession += 1;
         editedId = '';
         slugTouched = false;
@@ -4665,6 +4687,7 @@ function productCategoriesAdminPage(session) {
       }
 
       function editCategory(category) {
+        if (window.drevitoQr) window.drevitoQr.set(category.id);
         editSession += 1;
         var image = imageFromCategory(category);
         editedId = category.id;
@@ -5406,6 +5429,7 @@ function productsAdminPage(session) {
               <button class="button" type="submit" value="save">Přesunout do archivu</button>
               <button class="button button--secondary" type="submit" value="publish">Publikovat</button>
             </div>
+            ${adminQrBlock('products')}
           </form>
         </section>
 
@@ -5524,6 +5548,7 @@ function productsAdminPage(session) {
       }
 
       function resetForm() {
+        if (window.drevitoQr) window.drevitoQr.set('');
         editedId = '';
         slugTouched = false;
         photos = [];
@@ -5538,6 +5563,7 @@ function productsAdminPage(session) {
       }
 
       function editProduct(product) {
+        if (window.drevitoQr) window.drevitoQr.set(product.id);
         editedId = product.id;
         slugTouched = true;
         photos = Array.isArray(product.photos) ? product.photos.map(function(photo) { return Object.assign({}, photo); }) : [];
@@ -5949,6 +5975,7 @@ function blogPostsAdminPage(session) {
               <button class="button" type="submit" value="save">Uložit</button>
               <button class="button button--secondary" type="submit" value="publish">Publikovat</button>
             </div>
+            ${adminQrBlock('blog-posts')}
           </form>
         </section>
 
@@ -6046,6 +6073,7 @@ function blogPostsAdminPage(session) {
       }
 
       function resetForm() {
+        if (window.drevitoQr) window.drevitoQr.set('');
         editedId = '';
         slugTouched = false;
         photos = [];
@@ -6061,6 +6089,7 @@ function blogPostsAdminPage(session) {
       }
 
       function editPost(post) {
+        if (window.drevitoQr) window.drevitoQr.set(post.id);
         editedId = post.id;
         slugTouched = true;
         photos = Array.isArray(post.photos) ? post.photos.map(function(photo) { return Object.assign({}, photo); }) : [];
@@ -10617,6 +10646,29 @@ async function handleAdmin(req, res, url) {
         return;
       }
     }
+  }
+
+  if (url.pathname === '/admin/api/qr' && req.method === 'GET') {
+    try {
+      const format = url.searchParams.get('format') || 'json';
+      if (!['json', 'svg', 'png'].includes(format)) throw Object.assign(new Error('Neplatný formát QR kódu.'), { statusCode: 400 });
+      const target = resolveQrTarget(await getPublicCmsPayload('cs'), url.searchParams.get('type'), url.searchParams.get('id'));
+      if (format === 'json') {
+        sendJson(res, 200, { ok: true, ...target }, { 'Cache-Control': 'no-store' });
+      } else {
+        if (url.searchParams.get('expectedUrl') !== target.url) throw Object.assign(new Error('Veřejná adresa se změnila. Znovu otevřete obsah.'), { statusCode: 409 });
+        const body = await renderQr(target.url, format);
+        send(res, 200, body, {
+          'Content-Type': format === 'svg' ? 'image/svg+xml' : 'image/png',
+          'Content-Disposition': `attachment; filename="${target.filename}.${format}"`,
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff'
+        });
+      }
+    } catch (error) {
+      sendJson(res, error.statusCode || 503, { ok: false, error: error.statusCode ? error.message : 'Veřejný obsah se nepodařilo ověřit. Zkuste to znovu.' }, { 'Cache-Control': 'no-store' });
+    }
+    return;
   }
 
   if (url.pathname === '/admin/api/media' && req.method === 'GET') {
