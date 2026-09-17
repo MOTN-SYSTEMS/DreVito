@@ -1666,6 +1666,9 @@
             transition-delay: var(--reveal-delay, 0ms);
         }
         .motion-ready .reveal-item.reveal-visible { opacity: 1; transform: translateY(0); }
+        /* An anchor destination must not animate away from its scroll position. */
+        .motion-ready #contact { opacity: 1; transform: none; transition: none; }
+        #contact { scroll-margin-top: 40px; }
 
         @media (max-width: 980px) {
             .nav__links { gap: 0.75rem; }
@@ -2060,6 +2063,21 @@
 
 <script>
 (function() {
+    // The CMS can move the contact block. Do not let the browser scroll to its
+    // fallback position before the final homepage layout has been applied.
+    var pendingContactTarget = document.getElementById('contact');
+    if (pendingContactTarget) pendingContactTarget.removeAttribute('id');
+
+    function restoreContactAnchor() {
+        if (!pendingContactTarget) return;
+        pendingContactTarget.id = 'contact';
+        if (window.location.hash !== '#contact' || !pendingContactTarget.getClientRects().length) return;
+        pendingContactTarget.scrollIntoView({
+            behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+            block: 'start'
+        });
+    }
+
     var defaultProductCategories = [];
     function addDefaultCategory(id, slug, title, parentId, sortOrder) {
         defaultProductCategories.push({ id: id, slug: slug, title: title, parent_id: parentId || null, sort_order: sortOrder || 0 });
@@ -3246,7 +3264,12 @@
     renderBlogPosts('all');
     renderRequestedFileProduct();
     window.addEventListener('popstate', function() { activateCategory(categoryFromPath(), { updateUrl: false }); });
-    loadPublicContent();
+    loadPublicContent().then(function() {
+        // Font metrics also affect the height of the sections above contact.
+        return document.fonts ? document.fonts.ready : null;
+    }).then(function() {
+        requestAnimationFrame(restoreContactAnchor);
+    });
 })();
 </script>
 
