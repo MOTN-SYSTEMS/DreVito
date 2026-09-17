@@ -3146,15 +3146,8 @@
             });
     }
 
-    var blogGrid = document.getElementById('blog-grid');
-    if (blogGrid) {
-        blogGrid.addEventListener('click', function(event) {
-            var link = event.target.closest('[data-blog-slug]');
-            if (!link) return;
-            event.preventDefault();
-            openBlogDetail(link.getAttribute('data-blog-slug'));
-        });
-    }
+    // Article cards follow their canonical /blog/:slug links. Native navigation
+    // preserves direct URLs, reloads, browser history and opening in a new tab.
 
     document.addEventListener('click', function(event) {
         var closeButton = event.target.closest('[data-close-detail]');
