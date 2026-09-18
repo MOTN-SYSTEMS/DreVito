@@ -5,7 +5,8 @@
   "description": "Drevito static website with protected admin area.",
   "scripts": {
     "start": "node server.js",
-    "test": "npm run test:contracts && npm run test:smoke",
+    "test": "npm run test:contracts && npm run test:product-flow && npm run test:smoke",
+    "test:product-flow": "node scripts/product-create-flow-test.mjs",
     "test:contracts": "node scripts/correction-contract-test.mjs",
     "test:concurrency": "node scripts/category-concurrency-test.mjs",
     "test:migration": "node scripts/migration-integration-test.mjs && node scripts/category-concurrency-test.mjs",

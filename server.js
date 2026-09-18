@@ -5336,6 +5336,7 @@ function productsAdminPage(session) {
       <div class="product-layout" id="product-app">
         <section class="product-panel">
           <h2 id="product-form-title">Nový výrobek</h2>
+          <button class="button button--secondary button--small" id="product-new" type="button">Nový výrobek</button>
           <form id="product-form">
             <input type="hidden" id="product-id">
             <label>
@@ -5437,6 +5438,7 @@ function productsAdminPage(session) {
       var editedId = '';
       var slugTouched = false;
       var requestedEditId = new URLSearchParams(window.location.search).get('edit') || '';
+      var productSavePending = false;
       var form = document.getElementById('product-form');
       var formTitle = document.getElementById('product-form-title');
       var message = document.getElementById('product-message');
@@ -5736,12 +5738,14 @@ function productsAdminPage(session) {
           body: JSON.stringify(payload)
         });
         setMessage(publish ? 'Výrobek byl publikován na webu.' : 'Výrobek byl uložen do sekce Uložené v archivu.', 'success');
-        await loadData();
-        if (publish) {
+        // A completed INSERT must leave a fresh editor for the next product.
+        // Only an explicit edit keeps the identity of the saved record.
+        if (publish && id) {
           editProduct(data.product);
         } else {
           resetForm();
         }
+        await loadData();
       }
 
       async function archiveProduct(id) {
@@ -5781,11 +5785,24 @@ function productsAdminPage(session) {
 
       form.addEventListener('submit', function(event) {
         event.preventDefault();
+        if (productSavePending) return;
+        productSavePending = true;
+        var submitButtons = form.querySelectorAll('button[type="submit"]');
+        submitButtons.forEach(function(button) { button.disabled = true; });
         setMessage('', 'success');
         var publish = Boolean(event.submitter && event.submitter.value === 'publish');
         saveProduct(currentPayload(publish), editedId, publish).catch(function(error) {
           setMessage(error.message, 'error');
+        }).finally(function() {
+          productSavePending = false;
+          submitButtons.forEach(function(button) { button.disabled = false; });
         });
+      });
+
+      document.getElementById('product-new').addEventListener('click', function() {
+        if (productSavePending) return;
+        resetForm();
+        setMessage('', 'success');
       });
 
       titleInput.addEventListener('input', function() {
@@ -5877,6 +5894,7 @@ function productsAdminPage(session) {
       });
 
       root.addEventListener('click', function(event) {
+        if (productSavePending) return;
         var button = event.target.closest('[data-action]');
         if (!button) return;
         var id = button.dataset.id;
@@ -7325,9 +7343,13 @@ async function getProductById(id) {
 
 async function createProduct(input) {
   const { product, categoryIds, filterOptionIds } = normalizeProductInput(input);
-  await assertProductSlugUnique(product.slug);
+  const baseSlug = product.slug;
   if (!isSupabaseConfigured()) {
     const db = readCmsDb();
+    const existingSlugs = new Set(db.products.map((row) => row.slug));
+    for (let suffix = 2; existingSlugs.has(product.slug); suffix += 1) {
+      product.slug = `${baseSlug}-${suffix}`;
+    }
     categoryIds.forEach((categoryId) => {
       if (!db.product_categories.some((category) => category.id === categoryId)) {
         throw new Error('Vybraná kategorie nebyla nalezena.');
@@ -7350,12 +7372,23 @@ async function createProduct(input) {
     writeCmsDb(db);
     return getProductById(created.id);
   }
-  const rows = await supabaseRequest('products', {
-    method: 'POST',
-    body: product,
-    prefer: 'return=representation',
-    query: { select: 'id,title,slug,short_description,description,photos,price,wood_types,availability,use_context,sort_order,is_visible,is_published,published_at,archived_at,created_at,updated_at' }
-  });
+  let rows;
+  // INSERT only. The existing unique constraint arbitrates concurrent creates;
+  // retry a slug collision with a suffix, never upsert another product.
+  for (let suffix = 2; ; suffix += 1) {
+    try {
+      rows = await supabaseRequest('products', {
+        method: 'POST',
+        body: product,
+        prefer: 'return=representation',
+        query: { select: 'id,title,slug,short_description,description,photos,price,wood_types,availability,use_context,sort_order,is_visible,is_published,published_at,archived_at,created_at,updated_at' }
+      });
+      break;
+    } catch (error) {
+      if (error.code !== '23505' || !String(error.details?.message || '').includes('"products_slug_key"')) throw error;
+      product.slug = `${baseSlug}-${suffix}`;
+    }
+  }
   const created = Array.isArray(rows) ? rows[0] : rows;
   if (!created || !created.id) throw new Error('Výrobek se nepodařilo vytvořit.');
   await replaceProductCategoryLinks(created.id, categoryIds);
