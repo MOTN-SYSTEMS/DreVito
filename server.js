@@ -10017,16 +10017,16 @@ function renderPublicProductPage(product, statusCode = 200) {
     .tags span { padding: 7px 11px; border: 1px solid rgba(43, 33, 24, 0.13); border-radius: 999px; background: rgba(255, 252, 246, 0.55); font-size: 0.72rem; font-weight: 700; }
     .story {
       display: grid;
-      grid-template-columns: minmax(220px, 0.6fr) minmax(0, 1.4fr);
-      gap: clamp(24px, 4vw, 48px);
+      grid-template-columns: minmax(0, 1fr);
+      gap: clamp(24px, 3vw, 32px);
       margin-top: clamp(40px, 6vw, 72px);
       padding: clamp(24px, 4vw, 40px);
       border-radius: 32px;
       background: var(--forest);
       color: var(--panel);
     }
-    .story h2 { margin: 0; font: 600 clamp(1.35rem, 2vw, 1.65rem)/1.25 var(--display); letter-spacing: -0.02em; }
-    .story-copy { max-width: 70ch; font-size: 1rem; line-height: 1.7; overflow-wrap: anywhere; }
+    .story h2 { margin: 0; text-align: center; font: 600 clamp(1.35rem, 2vw, 1.65rem)/1.25 var(--display); letter-spacing: -0.02em; }
+    .story-copy { width: 100%; max-width: 70ch; margin-inline: auto; font-size: 1rem; line-height: 1.7; overflow-wrap: anywhere; }
     .story-copy p { margin: 0 0 18px; color: rgba(255, 252, 246, 0.76); }
     .story-copy p:last-child { margin-bottom: 0; }
     .gallery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 18px; }
