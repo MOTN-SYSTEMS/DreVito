@@ -1645,15 +1645,15 @@
         .file-product__story {
             display: grid;
             grid-template-columns: minmax(220px, 0.6fr) minmax(0, 1.4fr);
-            gap: clamp(2rem, 7vw, 5.5rem);
-            margin-top: clamp(4.5rem, 11vw, 8.5rem);
-            padding: clamp(2.4rem, 6vw, 4.5rem);
+            gap: clamp(1.5rem, 4vw, 3rem);
+            margin-top: clamp(2.5rem, 6vw, 4.5rem);
+            padding: clamp(1.5rem, 4vw, 2.5rem);
             border-radius: 32px;
             background: var(--color-forest);
             color: var(--color-card);
         }
-        .file-product__story-label { color: #E7C696; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.19em; text-transform: uppercase; }
-        .file-product__story h2 { margin: 0.85rem 0 0; font: 600 clamp(2.4rem, 5vw, 4.6rem)/0.98 var(--font-display); letter-spacing: -0.045em; }
+        .file-product__story h2 { margin: 0; font: 600 clamp(1.35rem, 2vw, 1.65rem)/1.25 var(--font-display); letter-spacing: -0.02em; }
+        .file-product__story-copy { max-width: 70ch; font-size: 1rem; line-height: 1.7; overflow-wrap: anywhere; }
         .file-product__story-copy p { margin: 0 0 1.1rem; color: rgba(255, 252, 246, 0.76); }
         .file-product__story-copy p:last-child { margin-bottom: 0; }
 
@@ -2532,8 +2532,8 @@
 
         var name = productName(product);
         var image = productImage(product);
-        var summary = productDescription(product) || 'Originální výrobek z dílny Dřevito.';
-        var description = stripHtml(product.description || summary);
+        var summary = productDescription(product);
+        var description = stripHtml(product.description || '');
         var paragraphs = textParagraphs(description);
         var categories = productCategoryNames(product);
         var categoryLine = categories.join(' · ') || 'Originál z dílny Dřevito';
@@ -2556,7 +2556,7 @@
             : '';
         var storyHtml = paragraphs.length
             ? paragraphs.map(function(paragraph) { return '<p>' + escapeHtml(paragraph) + '</p>'; }).join('')
-            : '<p>Podrobnější informace k tomuto výrobku pro vás právě připravujeme.</p>';
+            : '';
 
         root.innerHTML = '<div class="file-product__container">' +
             '<a class="file-product__back" href="' + homeUrl + '#products">← Zpět na všechny výrobky</a>' +
@@ -2565,7 +2565,7 @@
             '<div class="file-product__info">' +
             '<p class="file-product__eyebrow">' + escapeHtml(categoryLine) + '</p>' +
             '<h1 class="file-product__title">' + escapeHtml(name) + '</h1>' +
-            '<p class="file-product__summary">' + escapeHtml(summary) + '</p>' +
+            (summary ? '<p class="file-product__summary">' + escapeHtml(summary) + '</p>' : '') +
             '<div class="file-product__purchase">' +
             '<div><strong class="file-product__price">' + escapeHtml(priceText) + '</strong><span class="file-product__availability">' + escapeHtml(availability) + '</span></div>' +
             actionHtml +
@@ -2573,10 +2573,10 @@
             tagsHtml +
             '</div>' +
             '</section>' +
-            '<section class="file-product__story">' +
-            '<div><span class="file-product__story-label">Příběh výrobku</span><h2>Vyrobeno s respektem ke dřevu</h2></div>' +
+            (storyHtml ? '<section class="file-product__story" aria-labelledby="file-product-story-title">' +
+            '<h2 id="file-product-story-title">Příběh výrobku</h2>' +
             '<div class="file-product__story-copy">' + storyHtml + '</div>' +
-            '</section>' +
+            '</section>' : '') +
             '</div>';
         document.title = name + ' | Dřevito';
     }
