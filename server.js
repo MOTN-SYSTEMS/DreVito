@@ -5349,8 +5349,9 @@ function productsAdminPage(session) {
               <textarea id="product-short-description" name="short_description"></textarea>
             </label>
             <label>
-              Celý popis
-              <textarea id="product-description" name="description"></textarea>
+              Příběh výrobku
+              <textarea id="product-description" name="description" aria-describedby="product-story-help"></textarea>
+              <span id="product-story-help" class="help">Nepovinné. Pokud pole necháte prázdné, sekce se na webu nezobrazí.</span>
             </label>
             <input id="product-sort-order" name="sort_order" type="hidden" value="0">
             <input id="product-published-at" name="published_at" type="hidden">
@@ -9819,8 +9820,8 @@ function renderPublicProductPage(product, statusCode = 200) {
   const photos = publicProductPhotos(product);
   const primaryPhoto = photos[0] || null;
   const title = product.title || 'Výrobek Dřevito';
-  const summary = product.short_description || stripHtmlToText(product.description || '') || 'Originální výrobek z dílny Dřevito.';
-  const descriptionBlocks = textBlocks(stripHtmlToText(product.description || product.short_description || ''));
+  const summary = product.short_description || stripHtmlToText(product.description || '');
+  const descriptionBlocks = textBlocks(stripHtmlToText(product.description || ''));
   const availability = publicProductAvailability(product);
   const price = Number(product.price);
   const hasPrice = Number.isFinite(price) && price > 0;
@@ -9839,7 +9840,7 @@ function renderPublicProductPage(product, statusCode = 200) {
   const categoryLine = categoryNames.join(' · ') || 'Originál z dílny Dřevito';
   const descriptionHtml = descriptionBlocks.length
     ? descriptionBlocks.map((block) => `<p>${escapeHtml(block)}</p>`).join('')
-    : '<p>Podrobnější informace k tomuto výrobku pro vás právě připravujeme. Rádi vše doplníme při osobní domluvě.</p>';
+    : '';
   const primaryImageHtml = primaryPhoto
     ? `<img src="${escapeHtml(primaryPhoto.url)}" alt="${escapeHtml(primaryPhoto.alt || title)}">`
     : `<div class="product-visual-placeholder">${escapeHtml(title)}</div>`;
@@ -9997,26 +9998,21 @@ function renderPublicProductPage(product, statusCode = 200) {
     .story {
       display: grid;
       grid-template-columns: minmax(220px, 0.6fr) minmax(0, 1.4fr);
-      gap: clamp(34px, 7vw, 90px);
-      margin-top: clamp(72px, 11vw, 140px);
-      padding: clamp(38px, 6vw, 72px);
+      gap: clamp(24px, 4vw, 48px);
+      margin-top: clamp(40px, 6vw, 72px);
+      padding: clamp(24px, 4vw, 40px);
       border-radius: 32px;
       background: var(--forest);
       color: var(--panel);
     }
-    .story-label { color: #e7c696; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.19em; text-transform: uppercase; }
-    .story h2 { margin: 14px 0 0; font: 600 clamp(2.4rem, 5vw, 4.6rem)/0.98 var(--display); letter-spacing: -0.045em; }
-    .story-copy { max-width: 700px; }
+    .story h2 { margin: 0; font: 600 clamp(1.35rem, 2vw, 1.65rem)/1.25 var(--display); letter-spacing: -0.02em; }
+    .story-copy { max-width: 70ch; font-size: 1rem; line-height: 1.7; overflow-wrap: anywhere; }
     .story-copy p { margin: 0 0 18px; color: rgba(255, 252, 246, 0.76); }
     .story-copy p:last-child { margin-bottom: 0; }
     .gallery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 18px; }
     .gallery-grid figure { margin: 0; overflow: hidden; border-radius: 16px; background: var(--sand); }
     .gallery-grid img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; transition: transform 0.55s ease; }
     .gallery-grid figure:hover img { transform: scale(1.035); }
-    .craft-values { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: clamp(52px, 8vw, 92px); border: 1px solid rgba(43, 33, 24, 0.12); border-radius: 24px; overflow: hidden; background: rgba(43, 33, 24, 0.12); }
-    .craft-value { padding: clamp(22px, 4vw, 38px); background: rgba(255, 252, 246, 0.76); }
-    .craft-value strong { display: block; margin-bottom: 7px; font: 600 1.3rem/1.15 var(--display); }
-    .craft-value span { color: var(--muted); font-size: 0.83rem; }
     .final-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 46px; }
     footer { padding: 34px 20px; background: #221a14; color: rgba(255, 252, 246, 0.58); text-align: center; font-size: 0.75rem; }
     @media (max-width: 820px) {
@@ -10041,7 +10037,6 @@ function renderPublicProductPage(product, statusCode = 200) {
       .button { width: 100%; }
       .story { margin-right: -14px; margin-left: -14px; padding: 34px 22px; border-radius: 24px; }
       .gallery-grid { grid-template-columns: 1fr; }
-      .craft-values { grid-template-columns: 1fr; }
     }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
@@ -10075,7 +10070,7 @@ function renderPublicProductPage(product, statusCode = 200) {
       <div class="product-info">
         <p class="eyebrow">${escapeHtml(categoryLine)}</p>
         <h1>${escapeHtml(title)}</h1>
-        <p class="summary">${escapeHtml(summary)}</p>
+        ${summary ? `<p class="summary">${escapeHtml(summary)}</p>` : ''}
         <div class="purchase-row">
           <div><strong class="price">${escapeHtml(formattedPrice)}</strong><span class="availability">${escapeHtml(availability.label)}</span></div>
           ${primaryAction}
@@ -10086,16 +10081,10 @@ function renderPublicProductPage(product, statusCode = 200) {
 
     ${secondaryImagesHtml}
 
-    <section class="story">
-      <div><span class="story-label">Příběh výrobku</span><h2>Vyrobeno s&nbsp;respektem ke dřevu</h2></div>
+    ${descriptionHtml ? `<section class="story" aria-labelledby="product-story-title">
+      <h2 id="product-story-title">Příběh výrobku</h2>
       <div class="story-copy">${descriptionHtml}</div>
-    </section>
-
-    <section class="craft-values" aria-label="Hodnoty výrobku">
-      <div class="craft-value"><strong>Ruční práce</strong><span>Každý kus vzniká v dílně Dřevito.</span></div>
-      <div class="craft-value"><strong>Přírodní materiál</strong><span>Dřevo vybíráme podle charakteru výrobku.</span></div>
-      <div class="craft-value"><strong>Každý kus je originál</strong><span>Kresba a odstín dřeva se přirozeně liší.</span></div>
-    </section>
+    </section>` : ''}
 
     <div class="final-actions">
       ${primaryAction}

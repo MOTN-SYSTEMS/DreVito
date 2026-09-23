@@ -206,6 +206,39 @@ try {
   assert.deepEqual(duplicate.category_ids, []);
   assert.equal(rows.length, 11);
   assert.equal(ui.writes.at(-1).method, 'POST');
+  // The canonical description is the optional product story. Exercise the
+  // actual editor, persistence and public route, including clearing after reload.
+  const storyProduct = duplicate;
+  ui = await editor();
+  assert.equal(ui.el('product-description').value, '', 'New product story starts empty');
+  await ui.action('edit', storyProduct.id);
+  const storyText = 'Made from the customer’s oak board.\n\nThe original edge was retained.';
+  ui.el('product-description').value = storyText;
+  await ui.submit();
+  ui = await editor();
+  await ui.action('edit', storyProduct.id);
+  assert.equal(ui.el('product-description').value, storyText, 'Custom story survives save and reload');
+  let page = await (await request(`/vyrobek/${storyProduct.slug}`)).text();
+  assert.match(page, /<section class="story"/);
+  assert.ok(page.includes('The original edge was retained.'));
+  const beforeClear = (await api('/admin/api/products')).products.find(row => row.id === storyProduct.id);
+  ui.el('product-description').value = '';
+  await ui.submit();
+  ui = await editor();
+  await ui.action('edit', storyProduct.id);
+  assert.equal(ui.el('product-description').value, '', 'Clearing survives save and reload');
+  const afterClear = (await api('/admin/api/products')).products.find(row => row.id === storyProduct.id);
+  assert.equal(afterClear.description, null);
+  for (const key of Object.keys(beforeClear).filter(key => !['description', 'updated_at'].includes(key))) {
+    assert.deepEqual(afterClear[key], beforeClear[key], `Clearing story changed ${key}`);
+  }
+  page = await (await request(`/vyrobek/${storyProduct.slug}`)).text();
+  assert.doesNotMatch(page, /<section class="story"/);
+  assert.doesNotMatch(page, /product-story-title|Příběh výrobku/);
+  assert.ok(page.includes(afterClear.short_description), 'Other descriptions remain visible');
+  ui.el('product-new').fire('click');
+  assert.equal(ui.el('product-description').value, '', 'New product does not inherit the prior story');
+  console.log('PASS: story edit/save/reload, custom public rendering, clear/save/reload, no empty section, other fields preserved, new story empty.');
   // Exercise the production persistence branch without contacting Supabase.
   // Simulate its existing unique constraint, including concurrent INSERTs.
   const source = await readFile(path.join(root, 'server.js'), 'utf8');

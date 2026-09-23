@@ -66,6 +66,8 @@ Category images accept a URL/media reference shape. When a `media_id` points at 
 
 The protected product manager lets the client list, create, edit, show/hide, publish/unpublish, sort, archive, and restore products. Products can be assigned to multiple parent/subcategories, store a CZK price, and expose filters for wood type, availability, and interior/exterior use. Ordered photo metadata is saved in `products.photos`. Product actions remain on Dřevito and use direct enquiry instead of linking to third-party shops.
 
+The optional “Příběh výrobku” editor reuses `products.description`. Both public product renderers show this supporting section only when that field contains text; clearing it saves an empty value and removes the entire section. Stories never fall back to short descriptions or shared default copy. Existing product-specific descriptions are preserved.
+
 Product photos support upload or manual URL/media references. With Supabase configured, uploaded product photos go to the `product-images` Storage bucket, are saved in the `media` table, and are added to the product form as ordered JSON. Without Supabase credentials, uploads fall back to `uploads/products/...` and `.data/media-db.json`.
 
 The custom product filter manager lets the client create filter groups (for example `Styl`) and their selectable values (for example `Rustikální`). Visible custom filters are rendered automatically on the public catalog and can be assigned to products in the product editor.
