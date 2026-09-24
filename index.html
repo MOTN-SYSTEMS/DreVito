@@ -1618,11 +1618,66 @@
             .custom__images { min-height: 430px; }
         }
         @media (max-width: 768px) {
-            :root { --nav-height: 74px; }
-            .nav__logo { min-width: 118px; }
-            .nav__logo::before { width: 116px; height: 116px; top: 4px; left: 0; }
-            .nav__logo img { height: 98px; top: 13px; left: 9px; }
-            .nav__dropdown-toggle { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+            :root { --nav-height: 58px; }
+            .nav__inner { padding-inline: 0.75rem; }
+            .nav__logo { min-width: 112px; }
+            .nav__logo::before {
+                width: 108px;
+                height: 108px;
+                top: 4px;
+                left: 0;
+            }
+            .nav__logo img {
+                width: 102px;
+                height: 102px;
+                top: 7px;
+                left: 3px;
+                object-fit: contain;
+            }
+            .nav__dropdown-toggle {
+                width: 44px;
+                height: 44px;
+                justify-content: center;
+                padding: 0;
+                border: 1px solid rgba(43, 33, 24, 0.14);
+                border-radius: 50%;
+                background: rgba(255, 252, 246, 0.28);
+            }
+            .nav__menu-label {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                padding: 0;
+                margin: -1px;
+                overflow: hidden;
+                clip: rect(0, 0, 0, 0);
+                white-space: nowrap;
+                border: 0;
+            }
+            .nav__menu-icon {
+                display: grid;
+                width: 18px;
+                gap: 4px;
+            }
+            .nav__menu-icon span {
+                display: block;
+                width: 100%;
+                height: 2px;
+                border-radius: 999px;
+                background: currentColor;
+                transition: transform 0.22s ease, opacity 0.18s ease;
+            }
+            .nav__dropdown-toggle[aria-expanded="true"] .nav__menu-icon span:first-child { transform: translateY(6px) rotate(45deg); }
+            .nav__dropdown-toggle[aria-expanded="true"] .nav__menu-icon span:nth-child(2) { opacity: 0; transform: scaleX(0); }
+            .nav__dropdown-toggle[aria-expanded="true"] .nav__menu-icon span:last-child { transform: translateY(-6px) rotate(-45deg); }
+            .nav__dropdown-menu {
+                top: calc(100% + 3.75rem);
+                right: 0;
+                width: min(280px, calc(100vw - 1.5rem));
+                min-width: 0;
+                max-height: calc(100svh - 7.5rem);
+                overflow-y: auto;
+            }
             .hero__content { padding: 5rem 1.25rem 8rem; }
             .hero__bg::after {
                 background:
@@ -1723,11 +1778,15 @@
                 <a href="/admin/login" class="nav__link nav__link--login">Přihlášení</a>
             </div>
             <div class="nav__dropdown">
-                <button class="nav__dropdown-toggle" aria-expanded="false">
-                    Menu
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                <button class="nav__dropdown-toggle" type="button" aria-expanded="false" aria-controls="mobile-navigation" aria-label="Otevřít menu">
+                    <span class="nav__menu-label">Menu</span>
+                    <span class="nav__menu-icon" aria-hidden="true">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </span>
                 </button>
-                <div class="nav__dropdown-menu">
+                <div class="nav__dropdown-menu" id="mobile-navigation">
                     <a href="#about" class="nav__dropdown-item" data-copy-key="nav.about">O nás</a>
                     <a href="#products" class="nav__dropdown-item has-sub" data-copy-key="nav.products">Výrobky</a>
                     <div class="nav__dropdown-sub">
@@ -1838,6 +1897,7 @@
                     <strong class="products__filters-title">Upřesněte svůj výběr</strong>
                     <span class="products__filters-note">Najděte výrobek přesně pro vás</span>
                 </div>
+                <label class="products__filter">Kategorie<select id="filter-category"><option value="all">Všechny kategorie</option></select></label>
                 <label class="products__filter">Druh dřeva<select id="filter-wood"><option value="all">Všechny druhy</option></select></label>
                 <label class="products__filter">Dostupnost<select id="filter-availability"><option value="all">Vše</option><option value="in_stock">Skladem</option><option value="made_to_order">Na objednávku</option></select></label>
                 <label class="products__filter">Použití<select id="filter-use"><option value="all">Interiér i exteriér</option><option value="interior">Interiér</option><option value="exterior">Exteriér</option></select></label>
@@ -2127,6 +2187,32 @@
         return productCategories.find(function(category) { return category.slug === slug; });
     }
 
+    function categoryHasProducts(slug) {
+        return products.some(function(product) { return productMatchesCategory(product, slug); });
+    }
+
+    function availableProductCategories() {
+        return productCategories.filter(function(category) { return categoryHasProducts(category.slug); });
+    }
+
+    function productsInCategory(slug) {
+        return products.filter(function(product) { return productMatchesCategory(product, slug || 'all'); });
+    }
+
+    function setProductFilterVisibility(select, visible) {
+        var label = select && select.closest('.products__filter');
+        if (label) label.hidden = !visible;
+    }
+
+    function updateProductFiltersPanelVisibility() {
+        var panel = document.getElementById('products-filters');
+        if (!panel) return;
+        var visibleControls = panel.querySelectorAll('.products__filter:not([hidden])');
+        var reset = document.getElementById('filter-reset');
+        if (reset) reset.hidden = visibleControls.length === 0;
+        panel.hidden = visibleControls.length === 0;
+    }
+
     function productUrl(product) {
         var slug = encodeURIComponent(product.slug || product.id);
         return window.location.protocol === 'file:' ? '?product=' + slug : '/vyrobek/' + slug;
@@ -2153,10 +2239,12 @@
     function renderProductTabs() {
         var root = document.querySelector('.products__tabs');
         if (!root) return;
+        var availableCategories = availableProductCategories();
+        var availableParents = availableCategories.filter(function(category) { return !category.parent_id; });
+        root.hidden = availableParents.length === 0;
         var html = '<button class="products__tab active" data-category="all" role="tab">' + escapeHtml(siteCopyText('products.tabs.all', 'Vše')) + '</button>';
-        for (var i = 0; i < productCategories.length; i++) {
-            var category = productCategories[i];
-            if (category.parent_id) continue;
+        for (var i = 0; i < availableParents.length; i++) {
+            var category = availableParents[i];
             html += '<button class="products__tab" data-category="' + escapeHtml(category.slug) + '" role="tab">' + escapeHtml(category.title) + '</button>';
         }
         root.innerHTML = html;
@@ -2170,7 +2258,9 @@
         var selected = productCategoryBySlug(categorySlug);
         var parent = selected && selected.parent_id ? parentCategory(selected) : selected;
         if (!parent) { root.innerHTML = ''; return; }
-        var children = productCategories.filter(function(category) { return category.parent_id === parent.id; });
+        var children = productCategories.filter(function(category) {
+            return category.parent_id === parent.id && categoryHasProducts(category.slug);
+        });
         root.innerHTML = children.map(function(category) {
             return '<button class="products__subtab' + (category.slug === categorySlug ? ' active' : '') + '" data-category="' + escapeHtml(category.slug) + '" role="tab">' + escapeHtml(category.title) + '</button>';
         }).join('');
@@ -2178,17 +2268,23 @@
     }
 
     function renderProductNavigation() {
-        var parents = productCategories.filter(function(category) { return !category.parent_id; });
+        var parents = productCategories.filter(function(category) {
+            return !category.parent_id && categoryHasProducts(category.slug);
+        });
         var panel = document.querySelector('.nav__dropdown-panel');
         var mobile = document.querySelector('.nav__dropdown-sub');
         if (panel) panel.innerHTML = parents.map(function(parent) {
-            var children = productCategories.filter(function(category) { return category.parent_id === parent.id; });
+            var children = productCategories.filter(function(category) {
+                return category.parent_id === parent.id && categoryHasProducts(category.slug);
+            });
             return '<div class="nav__dropdown-group"><a href="' + escapeHtml(categoryUrl(parent.slug)) + '" class="nav__dropdown-title" data-cat="' + escapeHtml(parent.slug) + '">' + escapeHtml(parent.title) + '</a>' + children.map(function(child) {
                 return '<a href="' + escapeHtml(categoryUrl(child.slug)) + '" class="nav__dropdown-link" data-cat="' + escapeHtml(child.slug) + '">' + escapeHtml(child.title) + '</a>';
             }).join('') + '</div>';
         }).join('');
         if (mobile) mobile.innerHTML = '<button class="nav__dropdown-sub-back" type="button">← Zpět</button><a href="/vyrobky" class="nav__dropdown-sub-item" data-cat="all">Všechny výrobky</a>' + parents.map(function(parent) {
-            var children = productCategories.filter(function(category) { return category.parent_id === parent.id; });
+            var children = productCategories.filter(function(category) {
+                return category.parent_id === parent.id && categoryHasProducts(category.slug);
+            });
             return '<span class="nav__dropdown-sub-heading">' + escapeHtml(parent.title) + '</span><a href="' + escapeHtml(categoryUrl(parent.slug)) + '" class="nav__dropdown-sub-item" data-cat="' + escapeHtml(parent.slug) + '">Vše z kategorie</a>' + children.map(function(child) {
                 return '<a href="' + escapeHtml(categoryUrl(child.slug)) + '" class="nav__dropdown-sub-item" data-cat="' + escapeHtml(child.slug) + '">' + escapeHtml(child.title) + '</a>';
             }).join('');
@@ -2196,22 +2292,100 @@
     }
 
     function renderProductFilterOptions() {
+        var categorySelect = document.getElementById('filter-category');
+        if (categorySelect) {
+            var categoryOptions = '<option value="all">Všechny kategorie</option>';
+            var availableCategories = availableProductCategories();
+            var availableParents = availableCategories.filter(function(category) { return !category.parent_id; });
+            availableParents.forEach(function(parent) {
+                var children = availableCategories.filter(function(category) { return category.parent_id === parent.id; });
+                categoryOptions += '<option value="' + escapeHtml(parent.slug) + '">' + escapeHtml(parent.title) + '</option>';
+                children.forEach(function(child) {
+                    categoryOptions += '<option value="' + escapeHtml(child.slug) + '">— ' + escapeHtml(child.title) + '</option>';
+                });
+            });
+            categorySelect.innerHTML = categoryOptions;
+            categorySelect.value = productCategoryBySlug(currentCategory) ? currentCategory : 'all';
+            setProductFilterVisibility(categorySelect, availableParents.length > 0);
+        }
+        var relevantProducts = productsInCategory(currentCategory);
         var select = document.getElementById('filter-wood');
         if (!select) return;
         var woods = [];
-        products.forEach(function(product) {
+        relevantProducts.forEach(function(product) {
             (Array.isArray(product.wood_types) ? product.wood_types : []).forEach(function(wood) {
                 if (wood && !woods.some(function(item) { return item.toLocaleLowerCase('cs') === wood.toLocaleLowerCase('cs'); })) woods.push(wood);
             });
         });
         woods.sort(function(a, b) { return a.localeCompare(b, 'cs'); });
+        if (woods.length < 2 || woods.indexOf(productFilters.wood) === -1) productFilters.wood = 'all';
         select.innerHTML = '<option value="all">Všechny druhy</option>' + woods.map(function(wood) { return '<option value="' + escapeHtml(wood) + '">' + escapeHtml(wood) + '</option>'; }).join('');
-        select.value = woods.indexOf(productFilters.wood) !== -1 ? productFilters.wood : 'all';
+        select.value = productFilters.wood;
+        setProductFilterVisibility(select, woods.length > 1);
+
+        var availabilitySelect = document.getElementById('filter-availability');
+        var availabilityLabels = { in_stock: 'Skladem', made_to_order: 'Na objednávku' };
+        var availabilities = [];
+        relevantProducts.forEach(function(product) {
+            if (product.availability && availabilities.indexOf(product.availability) === -1) availabilities.push(product.availability);
+        });
+        if (availabilities.length < 2 || availabilities.indexOf(productFilters.availability) === -1) productFilters.availability = 'all';
+        availabilitySelect.innerHTML = '<option value="all">Vše</option>' + availabilities.map(function(value) {
+            return '<option value="' + escapeHtml(value) + '">' + escapeHtml(availabilityLabels[value] || value) + '</option>';
+        }).join('');
+        availabilitySelect.value = productFilters.availability;
+        setProductFilterVisibility(availabilitySelect, availabilities.length > 1);
+
+        var useSelect = document.getElementById('filter-use');
+        var useLabels = { interior: 'Interiér', exterior: 'Exteriér' };
+        var uses = [];
+        relevantProducts.forEach(function(product) {
+            (Array.isArray(product.use_context) ? product.use_context : []).forEach(function(value) {
+                if (value && uses.indexOf(value) === -1) uses.push(value);
+            });
+        });
+        if (uses.length < 2 || uses.indexOf(productFilters.use) === -1) productFilters.use = 'all';
+        useSelect.innerHTML = '<option value="all">Interiér i exteriér</option>' + uses.map(function(value) {
+            return '<option value="' + escapeHtml(value) + '">' + escapeHtml(useLabels[value] || value) + '</option>';
+        }).join('');
+        useSelect.value = productFilters.use;
+        setProductFilterVisibility(useSelect, uses.length > 1);
+
+        var priceMin = document.getElementById('filter-price-min');
+        var prices = [];
+        relevantProducts.forEach(function(product) {
+            var price = Number(product.price);
+            if (Number.isFinite(price) && prices.indexOf(price) === -1) prices.push(price);
+        });
+        if (prices.length < 2) {
+            productFilters.priceMin = null;
+            productFilters.priceMax = null;
+            priceMin.value = '';
+            document.getElementById('filter-price-max').value = '';
+        }
+        setProductFilterVisibility(priceMin, prices.length > 1);
+
         var customRoot = document.getElementById('custom-product-filters');
         if (customRoot) customRoot.innerHTML = customProductFilters.map(function(filter) {
-            var options = Array.isArray(filter.options) ? filter.options : [];
+            var options = (Array.isArray(filter.options) ? filter.options : []).filter(function(option) {
+                return relevantProducts.some(function(product) {
+                    return (Array.isArray(product.filter_options) ? product.filter_options : []).some(function(assigned) {
+                        return assigned.filter_id === filter.id && assigned.slug === option.slug;
+                    });
+                });
+            });
+            if (options.length < 2 || !productFilters.custom[filter.slug] || !options.some(function(option) { return option.slug === productFilters.custom[filter.slug]; })) {
+                productFilters.custom[filter.slug] = 'all';
+            }
             return '<label class="products__filter">' + escapeHtml(filter.title) + '<select data-custom-filter="' + escapeHtml(filter.slug) + '"><option value="all">Vše</option>' + options.map(function(option) { return '<option value="' + escapeHtml(option.slug) + '">' + escapeHtml(option.title) + '</option>'; }).join('') + '</select></label>';
         }).join('');
+        if (customRoot) customProductFilters.forEach(function(filter) {
+            var customSelect = customRoot.querySelector('[data-custom-filter="' + filter.slug + '"]');
+            if (!customSelect) return;
+            customSelect.value = productFilters.custom[filter.slug] || 'all';
+            setProductFilterVisibility(customSelect, customSelect.options.length > 2);
+        });
+        updateProductFiltersPanelVisibility();
     }
 
     function renderProducts(cat) {
@@ -2258,14 +2432,22 @@
 
     function activateCategory(cat, options) {
         options = options || {};
-        if (!productCategoryBySlug(cat) && cat !== 'all') cat = 'all';
+        if ((!productCategoryBySlug(cat) || !categoryHasProducts(cat)) && cat !== 'all') cat = 'all';
+        currentCategory = cat;
+        renderProductFilterOptions();
+        var categorySelect = document.getElementById('filter-category');
+        if (categorySelect) categorySelect.value = cat;
         var tabs = document.querySelectorAll('.products__tab');
-        for (var k = 0; k < tabs.length; k++) tabs[k].classList.remove('active');
+        for (var k = 0; k < tabs.length; k++) {
+            tabs[k].classList.remove('active');
+            tabs[k].setAttribute('aria-selected', 'false');
+        }
         for (var i = 0; i < tabs.length; i++) {
             var selected = productCategoryBySlug(cat);
             var selectedParent = selected && selected.parent_id ? parentCategory(selected) : selected;
             if (tabs[i].getAttribute('data-category') === cat || (selectedParent && tabs[i].getAttribute('data-category') === selectedParent.slug)) {
                 tabs[i].classList.add('active');
+                tabs[i].setAttribute('aria-selected', 'true');
                 break;
             }
         }
@@ -2290,6 +2472,7 @@
     }
 
     function bindProductFilters() {
+        var category = document.getElementById('filter-category');
         var wood = document.getElementById('filter-wood');
         var availability = document.getElementById('filter-availability');
         var use = document.getElementById('filter-use');
@@ -2305,12 +2488,16 @@
             renderProducts(currentCategory);
         }
         [wood, availability, use, min, max].forEach(function(input) { if (input) input.addEventListener('change', applyFilters); });
+        if (category) category.addEventListener('change', function() {
+            activateCategory(category.value);
+        });
         document.getElementById('custom-product-filters').addEventListener('change', applyFilters);
         document.getElementById('filter-reset').addEventListener('click', function() {
             productFilters = { wood: 'all', availability: 'all', use: 'all', priceMin: null, priceMax: null, custom: {} };
+            if (category) category.value = 'all';
             wood.value = 'all'; availability.value = 'all'; use.value = 'all'; min.value = ''; max.value = '';
             document.querySelectorAll('[data-custom-filter]').forEach(function(select) { select.value = 'all'; });
-            renderProducts(currentCategory);
+            activateCategory('all');
         });
     }
 
@@ -3088,6 +3275,7 @@
             e.stopPropagation();
             var expanded = this.getAttribute('aria-expanded') === 'true';
             this.setAttribute('aria-expanded', !expanded);
+            this.setAttribute('aria-label', expanded ? 'Otevřít menu' : 'Zavřít menu');
             dropdownMenu.classList.toggle('open');
         };
     }
@@ -3096,7 +3284,10 @@
     document.onclick = function(e) {
         if (dropdownMenu && !e.target.closest('.nav__dropdown') && !e.target.closest('.nav__item-with-dropdown')) {
             dropdownMenu.classList.remove('open');
-            if (dropdownToggle) dropdownToggle.setAttribute('aria-expanded', 'false');
+            if (dropdownToggle) {
+                dropdownToggle.setAttribute('aria-expanded', 'false');
+                dropdownToggle.setAttribute('aria-label', 'Otevřít menu');
+            }
         }
         if (dropdownPanel && !e.target.closest('.nav__item-with-dropdown')) {
             dropdownPanel.classList.remove('open');
@@ -3129,7 +3320,10 @@
             e.stopPropagation();
             var cat = link.getAttribute('data-cat');
             if (dropdownMenu) dropdownMenu.classList.remove('open');
-            if (dropdownToggle) dropdownToggle.setAttribute('aria-expanded', 'false');
+            if (dropdownToggle) {
+                dropdownToggle.setAttribute('aria-expanded', 'false');
+                dropdownToggle.setAttribute('aria-label', 'Otevřít menu');
+            }
             subMenu.classList.remove('open');
             activateCategory(cat);
             document.getElementById('products').scrollIntoView({ behavior: 'smooth' });
