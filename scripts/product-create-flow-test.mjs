@@ -233,6 +233,74 @@ try {
     const response = await request(`/admin/api/products/${current.id}`, { method: 'PATCH', body: JSON.stringify({ ...current, height_cm: bad }) });
     assert.ok(!response.ok, `Reject invalid dimension ${bad}`);
   }
+  const finishBaseline = (await api('/admin/api/products')).products.find(row => row.id === dimensionProduct.id);
+  const finishCases = [
+    { option: 'none', custom: '', text: 'Žádná' },
+    { option: 'natural_oil', custom: '', text: 'Přírodní olej' },
+    { option: 'wax', custom: '', text: 'Vosk' },
+    { option: 'other', custom: 'Lněná fermež', text: 'Lněná fermež' }
+  ];
+  for (const finishCase of finishCases) {
+    ui = await editor();
+    await ui.action('edit', dimensionProduct.id);
+    ui.el('product-surface-finish-option').value = finishCase.option;
+    ui.el('product-surface-finish-option').fire('change');
+    ui.el('product-surface-finish-custom').value = finishCase.custom;
+    assert.equal(ui.el('product-surface-finish-custom-field').hidden, finishCase.option !== 'other');
+    await ui.submit('publish');
+    ui = await editor();
+    await ui.action('edit', dimensionProduct.id);
+    assert.equal(ui.el('product-surface-finish-option').value, finishCase.option, `${finishCase.text} survives admin reload`);
+    assert.equal(ui.el('product-surface-finish-custom').value, finishCase.custom);
+    assert.equal(ui.el('product-surface-finish-custom-field').hidden, finishCase.option !== 'other');
+    const finishSaved = (await api('/admin/api/products')).products.find(row => row.id === dimensionProduct.id);
+    assert.equal(finishSaved.surface_finish, finishCase.text);
+    for (const key of ['title', 'slug', 'short_description', 'description', 'height_cm', 'width_cm', 'length_cm', 'price', 'availability', 'wood_types', 'use_context', 'photos', 'category_ids', 'filter_option_ids', 'is_visible', 'is_published', 'published_at']) {
+      assert.deepEqual(finishSaved[key], finishBaseline[key], `Surface finish must preserve ${key}`);
+    }
+    const finishPublic = await api('/api/public-content?locale=cs');
+    const publicFinishProduct = finishPublic.products.find(row => row.id === dimensionProduct.id);
+    assert.equal(publicFinishProduct.surface_finish, finishCase.text);
+    assert.ok(!Object.keys(finishPublic.site_content).some(key => key.startsWith('product.surface_finish.')), 'Internal finish records stay out of generic public content');
+    const genericContent = await api('/admin/api/site-content');
+    assert.ok(!genericContent.contents.some(item => item.content_key.startsWith('product.surface_finish.')), 'Finish records stay inside the product editor');
+    const finishPage = await (await request(`/vyrobek/${dimensionProduct.slug}`)).text();
+    assert.ok(finishPage.includes(`<dl class="product-specification"><dt>Povrchová úprava</dt><dd>${finishCase.text}</dd></dl>`));
+    assert.ok(finishPage.includes('Výška: 14,25 cm · Délka: 30,75 cm'), 'Surface finish must leave dimensions visible and unchanged');
+  }
+  const customFinishRow = (await api('/admin/api/products')).products.find(row => row.id === dimensionProduct.id);
+  const legacyFinishUpdate = { ...customFinishRow };
+  delete legacyFinishUpdate.surface_finish;
+  delete legacyFinishUpdate.surface_finish_option;
+  delete legacyFinishUpdate.surface_finish_custom;
+  const preservedFinish = await api(`/admin/api/products/${dimensionProduct.id}`, { method: 'PATCH', body: JSON.stringify(legacyFinishUpdate) });
+  assert.equal(preservedFinish.product.surface_finish, 'Lněná fermež', 'Older clients must preserve a finish they do not know about');
+  for (const invalidFinish of [
+    { surface_finish_option: 'unknown' },
+    { surface_finish_option: 'other', surface_finish_custom: ' ' },
+    { surface_finish_option: 'other', surface_finish_custom: 'a'.repeat(161) }
+  ]) {
+    const response = await request(`/admin/api/products/${dimensionProduct.id}`, { method: 'PATCH', body: JSON.stringify({ ...customFinishRow, ...invalidFinish }) });
+    assert.ok(!response.ok, 'Reject invalid or incomplete custom finish values');
+  }
+  ui = await editor();
+  await ui.action('edit', dimensionProduct.id);
+  ui.el('product-surface-finish-option').value = '';
+  ui.el('product-surface-finish-option').fire('change');
+  ui.el('product-surface-finish-custom').value = '';
+  await ui.submit('publish');
+  ui = await editor();
+  await ui.action('edit', dimensionProduct.id);
+  assert.equal(ui.el('product-surface-finish-option').value, '', 'Empty finish remains empty after reload');
+  assert.equal(ui.el('product-surface-finish-custom-field').hidden, true);
+  const emptyFinishPayload = await api('/api/public-content?locale=cs');
+  const emptyFinishProduct = emptyFinishPayload.products.find(row => row.id === dimensionProduct.id);
+  assert.ok(!Object.hasOwn(emptyFinishProduct, 'surface_finish'), 'Empty finish is omitted from public product data');
+  assert.ok(!Object.keys(emptyFinishPayload.site_content).some(key => key.startsWith('product.surface_finish.')));
+  const emptyFinishPage = await (await request(`/vyrobek/${dimensionProduct.slug}`)).text();
+  assert.doesNotMatch(emptyFinishPage, /<dl class="product-specification"|<dt>Povrchová úprava<\/dt>/);
+  assert.ok(emptyFinishPage.includes('Výška: 14,25 cm · Délka: 30,75 cm'));
+  console.log('PASS: surface finish options and custom value save/reload, public display, empty hiding, legacy preservation, and dimension preservation.');
   ui.el('product-new').fire('click');
   await ui.fill('DIMENSIONS CREATE');
   ui.el('product-height-cm').value = '1.5';

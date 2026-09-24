@@ -70,6 +70,8 @@ The optional “Příběh výrobku” editor reuses `products.description`. Both
 
 The optional “Rozměry” inputs store height, width and length independently in `products.height_cm`, `products.width_cm` and `products.length_cm`, in centimetres. Empty inputs clear only that value; omitted fields from older clients preserve existing dimensions. Existing descriptions are never parsed or changed. Public product details show full dimensions in height × width × length order, partial dimensions with Czech labels, and no dimensions block when all values are empty.
 
+The optional “Povrchová úprava” field offers no finish, natural oil, wax, or a custom value. It is stored as a product-keyed JSON record in `site_content`, so it does not require a product-table migration or alter existing product columns. Admin edits that omit the field preserve its value; public product views show it beside structured specifications and omit it when empty.
+
 Product photos support upload or manual URL/media references. With Supabase configured, uploaded product photos go to the `product-images` Storage bucket, are saved in the `media` table, and are added to the product form as ordered JSON. Without Supabase credentials, uploads fall back to `uploads/products/...` and `.data/media-db.json`.
 
 The custom product filter manager lets the client create filter groups (for example `Styl`) and their selectable values (for example `Rustikální`). Visible custom filters are rendered automatically on the public catalog and can be assigned to products in the product editor.

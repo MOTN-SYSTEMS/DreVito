@@ -21,9 +21,9 @@ const end = source.indexOf('    function blogCategorySlugs(', start);
 assert.ok(start > 0 && end > start);
 const renderSource = source.slice(start, end);
 const escapeHtml = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-function render(description, dimensions = {}) {
+function render(description, dimensions = {}, surface_finish = '') {
   const root = {};
-  const product = { ...dimensions, slug: 'test', title: 'Oak board', short_description: 'Short product description', description };
+  const product = { ...dimensions, slug: 'test', title: 'Oak board', short_description: 'Short product description', description, surface_finish };
   new Script(renderSource + '\nrenderRequestedFileProduct();').runInNewContext({
     formatProductDimensions,
     requestedFileProductSlug: () => 'test', products: [product],
@@ -49,3 +49,6 @@ console.log(`PASS: ${checked} tracked text sources free of forbidden copy; stati
 assert.match(render('', {height_cm: 45, width_cm: 120, length_cm: 40}), /45 × 120 × 40 cm/);
 assert.match(render('', {height_cm: 12.5, length_cm: 40}), /Výška: 12,5 cm · Délka: 40 cm/);
 assert.doesNotMatch(render('Dimensions only in existing text'), /<dl class="file-product__dimensions"/);
+assert.match(render('', {}, 'Přírodní olej'), /<dl class="file-product__specification"><dt>Povrchová úprava<\/dt><dd>Přírodní olej<\/dd><\/dl>/);
+assert.doesNotMatch(render('', {}, ''), /Povrchová úprava|file-product__specification/);
+assert.match(render('', {}, '<olej>'), /&lt;olej&gt;/);

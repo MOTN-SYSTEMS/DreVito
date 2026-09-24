@@ -741,6 +741,9 @@
             margin-bottom: 1rem;
         }
         .content-detail__text { color: var(--color-text-muted); line-height: 1.8; margin-bottom: 1rem; }
+        .content-detail__specifications { margin: 1.5rem 0; padding-top: 1rem; border-top: 1px solid rgba(43, 33, 24, 0.13); }
+        .content-detail__specifications dt { color: var(--color-text-muted); font-size: 0.8rem; }
+        .content-detail__specifications dd { margin: 0.3rem 0 0; font-weight: 600; overflow-wrap: anywhere; }
         .content-detail__close {
             border: 1.5px solid var(--color-accent);
             background: transparent;
@@ -1636,6 +1639,9 @@
         .file-product__dimensions { margin: 1.5rem 0; }
         .file-product__dimensions dt { color: var(--muted); font-size: 0.8rem; }
         .file-product__dimensions dd { margin: 0.3rem 0 0; font-size: 1rem; font-weight: 500; overflow-wrap: anywhere; }
+        .file-product__specification { margin: 1.5rem 0; }
+        .file-product__specification dt { color: var(--muted); font-size: 0.8rem; }
+        .file-product__specification dd { margin: 0.3rem 0 0; font-size: 1rem; font-weight: 500; overflow-wrap: anywhere; }
         .file-product__tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.5rem; }
         .file-product__tags span {
             padding: 0.45rem 0.7rem;
@@ -2466,6 +2472,7 @@
         var image = productImage(product);
         var categories = productCategoryNames(product).join(' / ');
         var text = product.description || productDescription(product);
+        var surfaceFinishText = String(product.surface_finish || '').trim();
         var paragraphs = textParagraphs(text);
         var body = paragraphs.length
             ? paragraphs.map(function(part) { return '<p class="content-detail__text">' + escapeHtml(part) + '</p>'; }).join('')
@@ -2479,6 +2486,7 @@
             '<div class="content-detail__meta">' + escapeHtml(categories || 'Výrobek Dřevito') + '</div>' +
             '<h3 class="content-detail__title">' + escapeHtml(name) + '</h3>' +
             body +
+            (surfaceFinishText ? '<dl class="content-detail__specifications"><dt>Povrchová úprava</dt><dd>' + escapeHtml(surfaceFinishText) + '</dd></dl>' : '') +
             '<button class="content-detail__close" type="button" data-close-detail="product">' + escapeHtml(siteCopyText('products.detail.close', 'Zavřít detail')) + '</button>' +
             '</div>';
         detail.classList.add('open');
@@ -2538,6 +2546,7 @@
         var image = productImage(product);
         var summary = productDescription(product);
         var description = stripHtml(product.description || '');
+        var surfaceFinishText = String(product.surface_finish || '').trim();
         var paragraphs = textParagraphs(description);
         var categories = productCategoryNames(product);
         var categoryLine = categories.join(' · ') || 'Originál z dílny Dřevito';
@@ -2576,6 +2585,7 @@
             actionHtml +
             '</div>' +
             (dimensionsText ? '<dl class="file-product__dimensions"><dt>Rozměry</dt><dd title="Výška × Šířka × Délka">' + escapeHtml(dimensionsText) + '</dd></dl>' : '') +
+            (surfaceFinishText ? '<dl class="file-product__specification"><dt>Povrchová úprava</dt><dd>' + escapeHtml(surfaceFinishText) + '</dd></dl>' : '') +
             tagsHtml +
             '</div>' +
             '</section>' +

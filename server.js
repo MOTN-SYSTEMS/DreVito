@@ -42,6 +42,13 @@ const SESSION_COOKIE = 'drevito_admin_session';
 const OAUTH_STATE_COOKIE = 'drevito_oauth_state';
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
 const OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60;
+const PRODUCT_SURFACE_FINISH_CONTENT_PREFIX = 'product.surface_finish.';
+const PRODUCT_SURFACE_FINISH_OPTIONS = Object.freeze({
+  none: 'Žádná',
+  natural_oil: 'Přírodní olej',
+  wax: 'Vosk',
+  other: 'Jiná'
+});
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -5384,6 +5391,24 @@ function productsAdminPage(session) {
                 </label>
               </div>
             </section>
+            <section class="filter-settings" aria-labelledby="product-surface-finish-heading">
+              <h3 id="product-surface-finish-heading">Povrchová úprava</h3>
+              <p id="product-surface-finish-help">Nepovinné. U možnosti „Jiná“ doplňte vlastní hodnotu.</p>
+              <div class="form-grid">
+                <label for="product-surface-finish-option">Povrchová úprava
+                  <select id="product-surface-finish-option" name="surface_finish_option" aria-describedby="product-surface-finish-help">
+                    <option value="">Neuvedeno</option>
+                    <option value="none">Žádná</option>
+                    <option value="natural_oil">Přírodní olej</option>
+                    <option value="wax">Vosk</option>
+                    <option value="other">Jiná</option>
+                  </select>
+                </label>
+                <label id="product-surface-finish-custom-field" for="product-surface-finish-custom" hidden>Vlastní povrchová úprava
+                  <input id="product-surface-finish-custom" name="surface_finish_custom" type="text" maxlength="160" autocomplete="off">
+                </label>
+              </div>
+            </section>
             <input id="product-sort-order" name="sort_order" type="hidden" value="0">
             <input id="product-published-at" name="published_at" type="hidden">
             <div id="product-category-checks">
@@ -5484,6 +5509,9 @@ function productsAdminPage(session) {
       var heightInput = document.getElementById('product-height-cm');
       var widthInput = document.getElementById('product-width-cm');
       var lengthInput = document.getElementById('product-length-cm');
+      var surfaceFinishOptionInput = document.getElementById('product-surface-finish-option');
+      var surfaceFinishCustomInput = document.getElementById('product-surface-finish-custom');
+      var surfaceFinishCustomField = document.getElementById('product-surface-finish-custom-field');
       var priceInput = document.getElementById('product-price');
       var availabilityInput = document.getElementById('product-availability');
       var woodTypesInput = document.getElementById('product-wood-types');
@@ -5559,6 +5587,8 @@ function productsAdminPage(session) {
           height_cm: heightInput.value,
           width_cm: widthInput.value,
           length_cm: lengthInput.value,
+          surface_finish_option: surfaceFinishOptionInput.value,
+          surface_finish_custom: surfaceFinishCustomInput.value,
           price: priceInput.value,
           availability: availabilityInput.value,
           wood_types: woodTypesInput.value.split(',').map(function(value) { return value.trim(); }).filter(Boolean),
@@ -5581,6 +5611,7 @@ function productsAdminPage(session) {
         formTitle.textContent = 'Nový výrobek';
         idInput.value = '';
         form.reset();
+        surfaceFinishCustomField.hidden = surfaceFinishOptionInput.value !== 'other';
         sortOrderInput.value = '0';
         renderCategoryChecks([]);
         renderFilterChecks([]);
@@ -5602,6 +5633,9 @@ function productsAdminPage(session) {
         heightInput.value = product.height_cm == null ? '' : product.height_cm;
         widthInput.value = product.width_cm == null ? '' : product.width_cm;
         lengthInput.value = product.length_cm == null ? '' : product.length_cm;
+        surfaceFinishOptionInput.value = product.surface_finish_option || '';
+        surfaceFinishCustomInput.value = product.surface_finish_custom || '';
+        surfaceFinishCustomField.hidden = surfaceFinishOptionInput.value !== 'other';
         priceInput.value = product.price == null ? '' : product.price;
         availabilityInput.value = product.availability || '';
         woodTypesInput.value = Array.isArray(product.wood_types) ? product.wood_types.join(', ') : '';
@@ -5857,6 +5891,11 @@ function productsAdminPage(session) {
         slugTouched = true;
         slugInput.value = slugify(slugInput.value);
       });
+
+      surfaceFinishOptionInput.addEventListener('change', function() {
+        surfaceFinishCustomField.hidden = surfaceFinishOptionInput.value !== 'other';
+      });
+      surfaceFinishCustomField.hidden = surfaceFinishOptionInput.value !== 'other';
 
       document.getElementById('product-reload').addEventListener('click', function() {
         loadData().catch(function(error) {
@@ -7193,6 +7232,151 @@ function normalizeProductTextList(input) {
   }, []);
 }
 
+function productSurfaceFinishContentKey(productId) {
+  assertUuid(productId);
+  return PRODUCT_SURFACE_FINISH_CONTENT_PREFIX + productId;
+}
+
+function isProductSurfaceFinishContentKey(contentKey) {
+  const value = String(contentKey || '');
+  return value.startsWith(PRODUCT_SURFACE_FINISH_CONTENT_PREFIX)
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(value.slice(PRODUCT_SURFACE_FINISH_CONTENT_PREFIX.length));
+}
+
+function productSurfaceFinishContentProductId(contentKey) {
+  if (!isProductSurfaceFinishContentKey(contentKey)) return '';
+  return String(contentKey).slice(PRODUCT_SURFACE_FINISH_CONTENT_PREFIX.length);
+}
+
+function normalizeProductSurfaceFinishValue(option, customValue) {
+  const normalizedOption = String(option || '').trim();
+  if (!normalizedOption) return { option: '', custom_value: '' };
+  if (!Object.prototype.hasOwnProperty.call(PRODUCT_SURFACE_FINISH_OPTIONS, normalizedOption)) {
+    throw new Error('Vyberte platnou povrchovou úpravu.');
+  }
+  const normalizedCustomValue = String(customValue || '').trim();
+  if (normalizedOption === 'other') {
+    if (!normalizedCustomValue) throw new Error('Doplňte vlastní povrchovou úpravu.');
+    if (normalizedCustomValue.length > 160) throw new Error('Vlastní povrchová úprava může mít nejvýše 160 znaků.');
+  }
+  return { option: normalizedOption, custom_value: normalizedOption === 'other' ? normalizedCustomValue : '' };
+}
+
+function normalizedStoredProductSurfaceFinish(content) {
+  const value = content && content.value && typeof content.value === 'object' ? content.value : {};
+  const option = String(value.option || '').trim();
+  if (!Object.prototype.hasOwnProperty.call(PRODUCT_SURFACE_FINISH_OPTIONS, option)) {
+    return { option: '', custom_value: '' };
+  }
+  const customValue = String(value.custom_value || '').trim();
+  if (option === 'other' && (!customValue || customValue.length > 160)) {
+    return { option: '', custom_value: '' };
+  }
+  return { option, custom_value: option === 'other' ? customValue : '' };
+}
+
+function productSurfaceFinishText(value) {
+  if (!value || !value.option) return '';
+  return value.option === 'other'
+    ? String(value.custom_value || '').trim()
+    : PRODUCT_SURFACE_FINISH_OPTIONS[value.option] || '';
+}
+
+function normalizeProductSurfaceFinishInput(input) {
+  const provided = Object.prototype.hasOwnProperty.call(input, 'surface_finish_option')
+    || Object.prototype.hasOwnProperty.call(input, 'surface_finish_custom')
+    || Object.prototype.hasOwnProperty.call(input, 'surfaceFinishOption')
+    || Object.prototype.hasOwnProperty.call(input, 'surfaceFinishCustom');
+  if (!provided) return { provided: false, value: null };
+  return {
+    provided: true,
+    value: normalizeProductSurfaceFinishValue(
+      input.surface_finish_option ?? input.surfaceFinishOption,
+      input.surface_finish_custom ?? input.surfaceFinishCustom
+    )
+  };
+}
+
+function attachProductSurfaceFinishes(products, rows) {
+  const finishByProduct = new Map();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const productId = productSurfaceFinishContentProductId(row && row.content_key);
+    if (productId && row.locale === 'cs') finishByProduct.set(productId, normalizedStoredProductSurfaceFinish(row));
+  });
+  return products.map((product) => {
+    const value = finishByProduct.get(product.id) || { option: '', custom_value: '' };
+    return {
+      ...product,
+      surface_finish_option: value.option,
+      surface_finish_custom: value.custom_value,
+      surface_finish: productSurfaceFinishText(value)
+    };
+  });
+}
+
+async function listProductSurfaceFinishRows() {
+  if (!isSupabaseConfigured()) {
+    return readCmsDb().site_content.filter((item) => isProductSurfaceFinishContentKey(item.content_key));
+  }
+  const rows = await supabaseRequest('site_content', {
+    query: {
+      select: 'id,content_key,locale,section,label,content_type,value,status,sort_order,published_at,created_at,updated_at',
+      content_key: `like.${PRODUCT_SURFACE_FINISH_CONTENT_PREFIX}*`,
+      locale: 'eq.cs'
+    }
+  });
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function saveProductSurfaceFinish(productId, selection, product) {
+  if (!selection || !selection.provided) return null;
+  const contentKey = productSurfaceFinishContentKey(productId);
+  const existing = await findSiteContentByKey(contentKey, 'cs');
+  const value = selection.value || { option: '', custom_value: '' };
+  if (!value.option && !existing) return null;
+
+  const isPublished = Boolean(product && product.is_visible && product.is_published && !product.archived_at);
+  const content = normalizeSiteContentInput({
+    content_key: contentKey,
+    locale: 'cs',
+    section: 'product_specifications',
+    label: 'Povrchová úprava výrobku',
+    content_type: 'json',
+    value,
+    status: value.option && isPublished ? 'published' : 'draft',
+    sort_order: 0,
+    published_at: value.option && isPublished ? (product.published_at || nowIso()) : null
+  });
+
+  if (!isSupabaseConfigured()) {
+    const db = readCmsDb();
+    const row = db.site_content.find((item) => item.content_key === contentKey && item.locale === 'cs');
+    if (row) updateLocalRow(row, content);
+    else db.site_content.push(createLocalRow(content));
+    writeCmsDb(db);
+    return row || db.site_content.find((item) => item.content_key === contentKey && item.locale === 'cs');
+  }
+
+  if (existing) {
+    const rows = await supabaseRequest('site_content', {
+      method: 'PATCH',
+      query: { id: `eq.${existing.id}`, select: 'id,content_key,locale,section,label,content_type,value,status,sort_order,published_at,created_at,updated_at' },
+      body: content,
+      prefer: 'return=representation'
+    });
+    if (!Array.isArray(rows) || !rows.length) throw new Error('Povrchovou úpravu se nepodařilo uložit.');
+    return rows[0];
+  }
+  const rows = await supabaseRequest('site_content', {
+    method: 'POST',
+    body: content,
+    prefer: 'return=representation',
+    query: { select: 'id,content_key,locale,section,label,content_type,value,status,sort_order,published_at,created_at,updated_at' }
+  });
+  return Array.isArray(rows) ? rows[0] : rows;
+}
+
 function normalizeProductInput(input) {
   const title = String(input.title || '').trim();
   const slug = String(input.slug || '').trim().toLowerCase();
@@ -7207,6 +7391,7 @@ function normalizeProductInput(input) {
   const availability = String(input.availability || '').trim();
   const woodTypes = normalizeProductTextList(input.wood_types || input.woodTypes);
   const useContext = normalizeProductTextList(input.use_context || input.useContext).map((value) => value.toLowerCase());
+  const surfaceFinish = normalizeProductSurfaceFinishInput(input);
 
   if (!title) throw new Error('Název výrobku je povinný.');
   if (!slug) throw new Error('Název je povinný.');
@@ -7247,7 +7432,8 @@ function normalizeProductInput(input) {
       published_at: normalizePublishedAt(input.published_at || input.publishedAt, isPublished)
     },
     categoryIds: normalizeCategoryIds(input.category_ids || input.categoryIds),
-    filterOptionIds: normalizeCategoryIds(input.filter_option_ids || input.filterOptionIds)
+    filterOptionIds: normalizeCategoryIds(input.filter_option_ids || input.filterOptionIds),
+    surfaceFinish
   };
 }
 
@@ -7303,14 +7489,15 @@ function attachProductFilterOptions(products, filters, options, links) {
 async function listProducts() {
   if (!isSupabaseConfigured()) {
     const db = readCmsDb();
-    const products = attachProductCategories(db.products, db.product_categories, db.product_category_links);
+    const categorizedProducts = attachProductCategories(db.products, db.product_categories, db.product_category_links);
+    const products = attachProductSurfaceFinishes(categorizedProducts, db.site_content);
     return {
       products: sortProducts(attachProductFilterOptions(products, db.product_filters, db.product_filter_options, db.product_filter_value_links)),
       categories: sortProductCategories(db.product_categories),
       filters: attachFilterOptions(db.product_filters, db.product_filter_options)
     };
   }
-  const [products, categories, links, filters, filterOptions, filterLinks] = await Promise.all([
+  const [products, categories, links, filters, filterOptions, filterLinks, surfaceFinishRows] = await Promise.all([
     supabaseRequest('products', {
       query: {
         select: 'id,title,slug,short_description,description,photos,price,height_cm,width_cm,length_cm,wood_types,availability,use_context,sort_order,is_visible,is_published,published_at,archived_at,created_at,updated_at',
@@ -7331,15 +7518,17 @@ async function listProducts() {
     }),
     supabaseRequest('product_filters', { query: { select: 'id,title,slug,description,sort_order,is_visible,archived_at', order: 'sort_order.asc,title.asc' } }),
     supabaseRequest('product_filter_options', { query: { select: 'id,filter_id,title,slug,sort_order,is_visible,archived_at', order: 'sort_order.asc,title.asc' } }),
-    supabaseRequest('product_filter_value_links', { query: { select: 'product_id,option_id' } })
+    supabaseRequest('product_filter_value_links', { query: { select: 'product_id,option_id' } }),
+    listProductSurfaceFinishRows()
   ]);
   const categorizedProducts = attachProductCategories(
     Array.isArray(products) ? products : [],
     Array.isArray(categories) ? categories : [],
     Array.isArray(links) ? links : []
   );
+  const productsWithSurfaceFinishes = attachProductSurfaceFinishes(categorizedProducts, surfaceFinishRows);
   return {
-    products: sortProducts(attachProductFilterOptions(categorizedProducts, Array.isArray(filters) ? filters : [], Array.isArray(filterOptions) ? filterOptions : [], Array.isArray(filterLinks) ? filterLinks : [])),
+    products: sortProducts(attachProductFilterOptions(productsWithSurfaceFinishes, Array.isArray(filters) ? filters : [], Array.isArray(filterOptions) ? filterOptions : [], Array.isArray(filterLinks) ? filterLinks : [])),
     categories: sortProductCategories(Array.isArray(categories) ? categories : []),
     filters: attachFilterOptions(Array.isArray(filters) ? filters : [], Array.isArray(filterOptions) ? filterOptions : [])
   };
@@ -7401,7 +7590,7 @@ async function getProductById(id) {
 }
 
 async function createProduct(input) {
-  const { product, categoryIds, filterOptionIds } = normalizeProductInput(input);
+  const { product, categoryIds, filterOptionIds, surfaceFinish } = normalizeProductInput(input);
   const baseSlug = product.slug;
   if (!isSupabaseConfigured()) {
     const db = readCmsDb();
@@ -7429,6 +7618,7 @@ async function createProduct(input) {
       })));
     db.product_filter_value_links = db.product_filter_value_links.filter((link) => link.product_id !== created.id).concat(filterOptionIds.map((optionId) => ({ product_id: created.id, option_id: optionId, created_at: nowIso() })));
     writeCmsDb(db);
+    if (surfaceFinish && surfaceFinish.provided) await saveProductSurfaceFinish(created.id, surfaceFinish, product);
     return getProductById(created.id);
   }
   let rows;
@@ -7452,12 +7642,13 @@ async function createProduct(input) {
   if (!created || !created.id) throw new Error('Výrobek se nepodařilo vytvořit.');
   await replaceProductCategoryLinks(created.id, categoryIds);
   await replaceProductFilterLinks(created.id, filterOptionIds);
+  if (surfaceFinish && surfaceFinish.provided) await saveProductSurfaceFinish(created.id, surfaceFinish, product);
   return getProductById(created.id);
 }
 
 async function updateProduct(id, input) {
   assertUuid(id);
-  const { product, categoryIds, filterOptionIds } = normalizeProductInput(input);
+  const { product, categoryIds, filterOptionIds, surfaceFinish } = normalizeProductInput(input);
   await assertProductSlugUnique(product.slug, id);
   if (!isSupabaseConfigured()) {
     const db = readCmsDb();
@@ -7482,6 +7673,7 @@ async function updateProduct(id, input) {
       })));
     db.product_filter_value_links = db.product_filter_value_links.filter((link) => link.product_id !== id).concat(filterOptionIds.map((optionId) => ({ product_id: id, option_id: optionId, created_at: nowIso() })));
     writeCmsDb(db);
+    if (surfaceFinish && surfaceFinish.provided) await saveProductSurfaceFinish(id, surfaceFinish, product);
     return getProductById(id);
   }
   const rows = await supabaseRequest('products', {
@@ -7496,6 +7688,7 @@ async function updateProduct(id, input) {
   if (!Array.isArray(rows) || !rows.length) throw new Error('Výrobek nebyl nalezen.');
   await replaceProductCategoryLinks(id, categoryIds);
   await replaceProductFilterLinks(id, filterOptionIds);
+  if (surfaceFinish && surfaceFinish.provided) await saveProductSurfaceFinish(id, surfaceFinish, product);
   return getProductById(id);
 }
 
@@ -8356,6 +8549,11 @@ function isLegacyHomepageContentKey(contentKey) {
 }
 
 function assertGenericSiteContentKeyAllowed(contentKey) {
+  if (isProductSurfaceFinishContentKey(contentKey)) {
+    const error = new Error('Tuto specifikaci spravuje editor výrobků. Upravte ji přímo u výrobku.');
+    error.statusCode = 409;
+    throw error;
+  }
   if (isHomepageReservedContentKey(contentKey) || isLegacyHomepageContentKey(contentKey)) {
     const error = new Error('Tento obsah spravuje editor domovské stránky. Upravte jej v sekci Domovská stránka, aby se změna skutečně projevila na webu.');
     error.statusCode = 409;
@@ -8379,7 +8577,9 @@ async function findSiteContentById(id) {
 
 async function listGenericSiteContent() {
   const contents = await listSiteContent();
-  return contents.filter((item) => !isHomepageReservedContentKey(item.content_key) && !isLegacyHomepageContentKey(item.content_key));
+  return contents.filter((item) => !isHomepageReservedContentKey(item.content_key)
+    && !isLegacyHomepageContentKey(item.content_key)
+    && !isProductSurfaceFinishContentKey(item.content_key));
 }
 
 function homepageWriteUnavailableError() {
@@ -8702,9 +8902,16 @@ function sanitizeProductionPublicPayload(payload, locale) {
     ? hydrateHomepageLayout(source.homepage_layout, mediaMap)
     : null;
   const siteContent = {};
+  const productSurfaceFinishes = new Map();
   Object.entries(source.site_content && typeof source.site_content === 'object' ? source.site_content : {}).forEach(([key, item]) => {
     if (!item || typeof item !== 'object') return;
     const normalizedItem = { ...item, content_key: item.content_key || key };
+    if (isProductSurfaceFinishContentKey(normalizedItem.content_key)) {
+      const productId = productSurfaceFinishContentProductId(normalizedItem.content_key);
+      const finishText = productSurfaceFinishText(normalizedStoredProductSurfaceFinish(normalizedItem));
+      if (productId && finishText) productSurfaceFinishes.set(productId, finishText);
+      return;
+    }
     siteContent[key] = {
       ...normalizedItem,
       value: normalizedItem.content_key === HOMEPAGE_LAYOUT_CONTENT_KEY
@@ -8721,7 +8928,12 @@ function sanitizeProductionPublicPayload(payload, locale) {
     homepage_layout: homepageLayout,
     homepage_source: 'production_public_bridge',
     site_content: siteContent,
-    products: (Array.isArray(source.products) ? source.products : []).map(sanitizeEntry),
+    products: (Array.isArray(source.products) ? source.products : []).map((entry) => {
+      const sanitized = sanitizeEntry(entry);
+      const finishText = String(sanitized.surface_finish || productSurfaceFinishes.get(sanitized.id) || '').trim();
+      const { surface_finish: _surfaceFinish, ...withoutSurfaceFinish } = sanitized;
+      return finishText ? { ...withoutSurfaceFinish, surface_finish: finishText } : withoutSurfaceFinish;
+    }),
     product_categories: sanitizeCategories(source.product_categories),
     blog_posts: (Array.isArray(source.blog_posts) ? source.blog_posts : []).map(sanitizeEntry),
     blog_categories: sanitizeCategories(source.blog_categories),
@@ -9200,8 +9412,21 @@ async function buildPublicCmsPayload(locale, rows, givenMediaMap, legacyMediaDb)
     productFilterOptionRows,
     productFilterLinkRows
   } = rows;
-  const siteContent = sortSiteContent((Array.isArray(siteContentRows) ? siteContentRows : []).filter((item) => isPublicSiteContentItem(item, locale)));
-  const products = sortProducts((Array.isArray(productRows) ? productRows : []).filter(isPublicProduct));
+  const allSiteContentRows = Array.isArray(siteContentRows) ? siteContentRows : [];
+  const productSurfaceFinishes = new Map();
+  allSiteContentRows.filter((item) => isProductSurfaceFinishContentKey(item && item.content_key)
+    && isPublicSiteContentItem(item, locale)).forEach((item) => {
+    const productId = productSurfaceFinishContentProductId(item.content_key);
+    const finishText = productSurfaceFinishText(normalizedStoredProductSurfaceFinish(item));
+    if (productId && finishText) productSurfaceFinishes.set(productId, finishText);
+  });
+  const siteContent = sortSiteContent(allSiteContentRows.filter((item) => (
+    isPublicSiteContentItem(item, locale) && !isProductSurfaceFinishContentKey(item.content_key)
+  )));
+  const products = sortProducts((Array.isArray(productRows) ? productRows : []).filter(isPublicProduct).map((product) => {
+    const finishText = productSurfaceFinishes.get(product.id);
+    return finishText ? { ...product, surface_finish: finishText } : product;
+  }));
   const productCategories = sortProductCategories((Array.isArray(productCategoryRows) ? productCategoryRows : []).filter(isPublicProductCategory));
   const blogPosts = sortBlogPosts((Array.isArray(blogPostRows) ? blogPostRows : []).filter(isPublicBlogPost));
   const blogCategories = sortBlogCategories((Array.isArray(blogCategoryRows) ? blogCategoryRows : []).filter(isPublicBlogCategory));
@@ -9286,6 +9511,7 @@ async function buildPublicCmsPayload(locale, rows, givenMediaMap, legacyMediaDb)
       height_cm: product.height_cm ?? null,
       width_cm: product.width_cm ?? null,
       length_cm: product.length_cm ?? null,
+      ...(product.surface_finish ? { surface_finish: product.surface_finish } : {}),
       price: Number.isFinite(Number(product.price)) ? Number(product.price) : 0,
       wood_types: Array.isArray(product.wood_types) ? product.wood_types : [],
       availability: product.availability || '',
@@ -9884,6 +10110,7 @@ function renderPublicProductPage(product, statusCode = 200) {
   const summary = product.short_description || stripHtmlToText(product.description || '');
   const descriptionBlocks = textBlocks(stripHtmlToText(product.description || ''));
   const availability = publicProductAvailability(product);
+  const surfaceFinishText = String(product.surface_finish || '').trim();
   const price = Number(product.price);
   const hasPrice = Number.isFinite(price) && price > 0;
   const formattedPrice = hasPrice
@@ -10038,6 +10265,9 @@ function renderPublicProductPage(product, statusCode = 200) {
     .product-dimensions { margin: 24px 0; }
     .product-dimensions dt { color: var(--muted); font-size: 0.8rem; }
     .product-dimensions dd { margin: 5px 0 0; font-size: 1rem; font-weight: 500; overflow-wrap: anywhere; }
+    .product-specification { margin: 24px 0; }
+    .product-specification dt { color: var(--muted); font-size: 0.8rem; }
+    .product-specification dd { margin: 5px 0 0; font-size: 1rem; font-weight: 500; overflow-wrap: anywhere; }
     .purchase-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 22px 0; border-top: 1px solid rgba(43, 33, 24, 0.13); border-bottom: 1px solid rgba(43, 33, 24, 0.13); }
     .price { display: block; font: 600 clamp(1.65rem, 3vw, 2.35rem)/1 var(--display); }
     .availability { display: block; margin-top: 6px; color: var(--muted); font-size: 0.76rem; font-weight: 700; }
@@ -10141,6 +10371,7 @@ function renderPublicProductPage(product, statusCode = 200) {
           ${primaryAction}
         </div>
         ${dimensionsText ? `<dl class="product-dimensions"><dt>Rozměry</dt><dd title="Výška × Šířka × Délka">${escapeHtml(dimensionsText)}</dd></dl>` : ''}
+        ${surfaceFinishText ? `<dl class="product-specification"><dt>Povrchová úprava</dt><dd>${escapeHtml(surfaceFinishText)}</dd></dl>` : ''}
         ${tagsHtml}
       </div>
     </section>
