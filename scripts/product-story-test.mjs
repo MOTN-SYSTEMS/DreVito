@@ -1,3 +1,4 @@
+import formatProductDimensions from '../product-dimensions.js';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -20,10 +21,11 @@ const end = source.indexOf('    function blogCategorySlugs(', start);
 assert.ok(start > 0 && end > start);
 const renderSource = source.slice(start, end);
 const escapeHtml = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-function render(description) {
+function render(description, dimensions = {}) {
   const root = {};
-  const product = { slug: 'test', title: 'Oak board', short_description: 'Short product description', description };
+  const product = { ...dimensions, slug: 'test', title: 'Oak board', short_description: 'Short product description', description };
   new Script(renderSource + '\nrenderRequestedFileProduct();').runInNewContext({
+    formatProductDimensions,
     requestedFileProductSlug: () => 'test', products: [product],
     document: { getElementById: () => root, body: { classList: { add() {} } } },
     window: { location: { protocol: 'file:' } }, prepareFileProductNavigation() {},
@@ -43,3 +45,7 @@ assert.match(custom, /<p>Retained the natural oak edge\.<\/p>/);
 assert.match(custom, /<p>A board selected for this table\.<\/p>/);
 assert.doesNotMatch(custom.toLowerCase(), new RegExp(forbidden));
 console.log(`PASS: ${checked} tracked text sources free of forbidden copy; static renderer custom/empty/null/whitespace stories.`);
+
+assert.match(render('', {height_cm: 45, width_cm: 120, length_cm: 40}), /45 × 120 × 40 cm/);
+assert.match(render('', {height_cm: 12.5, length_cm: 40}), /Výška: 12,5 cm · Délka: 40 cm/);
+assert.doesNotMatch(render('Dimensions only in existing text'), /<dl class="file-product__dimensions"/);

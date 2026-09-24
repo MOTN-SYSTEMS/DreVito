@@ -207,6 +207,10 @@ try {
   for (const key of ['title', 'slug', 'description', 'short_description', 'price', 'photos', 'category_ids', 'filter_option_ids', 'is_visible', 'is_published', 'published_at']) {
     assert.deepEqual(dimensionSaved[key], dimensionProduct[key], `Dimensions must preserve ${key}`);
   }
+  let dimensionsPage = await (await request(`/vyrobek/${dimensionProduct.slug}`)).text();
+  assert.match(dimensionsPage, /12,5 × 20 × 30,75 cm/);
+  const publicDimensionProduct = (await api('/api/public-content?locale=cs')).products.find(row => row.id === dimensionProduct.id);
+  assert.equal(publicDimensionProduct.height_cm, 12.5);
   ui.el('product-height-cm').value = '14.25';
   ui.el('product-width-cm').value = '';
   await ui.submit();
@@ -215,6 +219,11 @@ try {
   assert.equal(Number(ui.el('product-height-cm').value), 14.25);
   assert.equal(ui.el('product-width-cm').value, '');
   assert.equal(Number(ui.el('product-length-cm').value), 30.75);
+  dimensionsPage = await (await request(`/vyrobek/${dimensionProduct.slug}`)).text();
+  assert.match(dimensionsPage, /Výška: 14,25 cm · Délka: 30,75 cm/);
+  assert.doesNotMatch(dimensionsPage, /Šířka:|14,25 ×/);
+  const emptyDimensionsPage = await (await request(`/vyrobek/${created[1].slug}`)).text();
+  assert.doesNotMatch(emptyDimensionsPage, /<dl class="product-dimensions"/);
   const current = (await api('/admin/api/products')).products.find(row => row.id === dimensionProduct.id);
   const oldClient = { ...current };
   for (const key of ['height_cm', 'width_cm', 'length_cm']) delete oldClient[key];

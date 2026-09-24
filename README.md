@@ -68,7 +68,7 @@ The protected product manager lets the client list, create, edit, show/hide, pub
 
 The optional “Příběh výrobku” editor reuses `products.description`. Both public product renderers show this supporting section only when that field contains text; clearing it saves an empty value and removes the entire section. Stories never fall back to short descriptions or shared default copy. Existing product-specific descriptions are preserved.
 
-The optional “Rozměry” inputs store height, width and length independently in `products.height_cm`, `products.width_cm` and `products.length_cm`, in centimetres. Empty inputs clear only that value; omitted fields from older clients preserve existing dimensions. Existing descriptions are never parsed or changed. Dimensions remain CMS-only until a public specifications area is agreed.
+The optional “Rozměry” inputs store height, width and length independently in `products.height_cm`, `products.width_cm` and `products.length_cm`, in centimetres. Empty inputs clear only that value; omitted fields from older clients preserve existing dimensions. Existing descriptions are never parsed or changed. Public product details show full dimensions in height × width × length order, partial dimensions with Czech labels, and no dimensions block when all values are empty.
 
 Product photos support upload or manual URL/media references. With Supabase configured, uploaded product photos go to the `product-images` Storage bucket, are saved in the `media` table, and are added to the product form as ordered JSON. Without Supabase credentials, uploads fall back to `uploads/products/...` and `.data/media-db.json`.
 

@@ -1633,6 +1633,9 @@
             transition: transform var(--transition-smooth), background-color var(--transition-smooth);
         }
         .file-product__button:hover { background: var(--color-forest); transform: translateY(-2px); }
+        .file-product__dimensions { margin: 1.5rem 0; }
+        .file-product__dimensions dt { color: var(--muted); font-size: 0.8rem; }
+        .file-product__dimensions dd { margin: 0.3rem 0 0; font-size: 1rem; font-weight: 500; overflow-wrap: anywhere; }
         .file-product__tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.5rem; }
         .file-product__tags span {
             padding: 0.45rem 0.7rem;
@@ -2061,6 +2064,7 @@
         </div>
     </footer>
 
+<script src="product-dimensions.js"></script>
 <script>
 (function() {
     // The CMS can move the contact block. Do not let the browser scroll to its
@@ -2551,6 +2555,7 @@
             ? '<img src="' + escapeHtml(image) + '" alt="' + escapeHtml(productImageAlt(product)) + '">'
             : '<div class="file-product__placeholder">' + escapeHtml(name) + '</div>';
         var actionHtml = '<a class="file-product__button" href="mailto:info@drevito.cz">Poptat výrobek</a>';
+        var dimensionsText = formatProductDimensions(product);
         var tagsHtml = tags.length
             ? '<div class="file-product__tags">' + tags.map(function(tag) { return '<span>' + escapeHtml(tag) + '</span>'; }).join('') + '</div>'
             : '';
@@ -2570,6 +2575,7 @@
             '<div><strong class="file-product__price">' + escapeHtml(priceText) + '</strong><span class="file-product__availability">' + escapeHtml(availability) + '</span></div>' +
             actionHtml +
             '</div>' +
+            (dimensionsText ? '<dl class="file-product__dimensions"><dt>Rozměry</dt><dd title="Výška × Šířka × Délka">' + escapeHtml(dimensionsText) + '</dd></dl>' : '') +
             tagsHtml +
             '</div>' +
             '</section>' +

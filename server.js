@@ -4,6 +4,7 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const sharp = require('sharp');
+const formatProductDimensions = require('./product-dimensions');
 const { resolveQrTarget, renderQr } = require('./lib/static-qr');
 const { URL } = require('url');
 
@@ -69,6 +70,7 @@ const PUBLIC_STATIC_FILES = new Set([
   'index.html',
   'image-upload-tools.js',
   'qr-tools.js',
+  'product-dimensions.js',
   'autor.JPG',
   'cajne-stolicky.JPG',
   'custom-service.jpg',
@@ -9281,6 +9283,9 @@ async function buildPublicCmsPayload(locale, rows, givenMediaMap, legacyMediaDb)
       slug: product.slug,
       short_description: product.short_description || '',
       description: product.description || '',
+      height_cm: product.height_cm ?? null,
+      width_cm: product.width_cm ?? null,
+      length_cm: product.length_cm ?? null,
       price: Number.isFinite(Number(product.price)) ? Number(product.price) : 0,
       wood_types: Array.isArray(product.wood_types) ? product.wood_types : [],
       availability: product.availability || '',
@@ -9903,6 +9908,7 @@ function renderPublicProductPage(product, statusCode = 200) {
   const secondaryImagesHtml = photos.slice(1, 4).length
     ? `<div class="gallery-grid">${photos.slice(1, 4).map((photo) => `<figure><img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.alt || title)}" loading="lazy"></figure>`).join('')}</div>`
     : '';
+  const dimensionsText = formatProductDimensions(product);
   const tagsHtml = detailTags.length
     ? `<div class="tags">${detailTags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join('')}</div>`
     : '';
@@ -10029,6 +10035,9 @@ function renderPublicProductPage(product, statusCode = 200) {
     .eyebrow { margin: 0 0 16px; color: var(--accent-dark); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; }
     h1 { margin: 0 0 22px; font: 600 clamp(3.25rem, 7vw, 6.6rem)/0.92 var(--display); letter-spacing: -0.052em; text-wrap: balance; }
     .summary { max-width: 620px; margin: 0 0 28px; color: var(--muted); font-size: clamp(1rem, 1.7vw, 1.2rem); }
+    .product-dimensions { margin: 24px 0; }
+    .product-dimensions dt { color: var(--muted); font-size: 0.8rem; }
+    .product-dimensions dd { margin: 5px 0 0; font-size: 1rem; font-weight: 500; overflow-wrap: anywhere; }
     .purchase-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 22px 0; border-top: 1px solid rgba(43, 33, 24, 0.13); border-bottom: 1px solid rgba(43, 33, 24, 0.13); }
     .price { display: block; font: 600 clamp(1.65rem, 3vw, 2.35rem)/1 var(--display); }
     .availability { display: block; margin-top: 6px; color: var(--muted); font-size: 0.76rem; font-weight: 700; }
@@ -10131,6 +10140,7 @@ function renderPublicProductPage(product, statusCode = 200) {
           <div><strong class="price">${escapeHtml(formattedPrice)}</strong><span class="availability">${escapeHtml(availability.label)}</span></div>
           ${primaryAction}
         </div>
+        ${dimensionsText ? `<dl class="product-dimensions"><dt>Rozměry</dt><dd title="Výška × Šířka × Délka">${escapeHtml(dimensionsText)}</dd></dl>` : ''}
         ${tagsHtml}
       </div>
     </section>
