@@ -5367,6 +5367,21 @@ function productsAdminPage(session) {
               <textarea id="product-description" name="description" aria-describedby="product-story-help"></textarea>
               <span id="product-story-help" class="help">Nepovinné. Pokud pole necháte prázdné, sekce se na webu nezobrazí.</span>
             </label>
+            <section class="filter-settings" aria-labelledby="product-dimensions-heading">
+              <h3 id="product-dimensions-heading">Rozměry</h3>
+              <p id="product-dimensions-help">V × Š × D · cm · Nepovinné</p>
+              <div class="form-grid">
+                <label>Výška (cm)
+                  <input id="product-height-cm" name="height_cm" type="number" min="0" step="any" inputmode="decimal" aria-describedby="product-dimensions-help">
+                </label>
+                <label>Šířka (cm)
+                  <input id="product-width-cm" name="width_cm" type="number" min="0" step="any" inputmode="decimal" aria-describedby="product-dimensions-help">
+                </label>
+                <label>Délka (cm)
+                  <input id="product-length-cm" name="length_cm" type="number" min="0" step="any" inputmode="decimal" aria-describedby="product-dimensions-help">
+                </label>
+              </div>
+            </section>
             <input id="product-sort-order" name="sort_order" type="hidden" value="0">
             <input id="product-published-at" name="published_at" type="hidden">
             <div id="product-category-checks">
@@ -5464,6 +5479,9 @@ function productsAdminPage(session) {
       var slugInput = document.getElementById('product-slug');
       var shortDescriptionInput = document.getElementById('product-short-description');
       var descriptionInput = document.getElementById('product-description');
+      var heightInput = document.getElementById('product-height-cm');
+      var widthInput = document.getElementById('product-width-cm');
+      var lengthInput = document.getElementById('product-length-cm');
       var priceInput = document.getElementById('product-price');
       var availabilityInput = document.getElementById('product-availability');
       var woodTypesInput = document.getElementById('product-wood-types');
@@ -5536,6 +5554,9 @@ function productsAdminPage(session) {
           slug: slugInput.value.trim().toLowerCase(),
           short_description: shortDescriptionInput.value.trim(),
           description: descriptionInput.value.trim(),
+          height_cm: heightInput.value,
+          width_cm: widthInput.value,
+          length_cm: lengthInput.value,
           price: priceInput.value,
           availability: availabilityInput.value,
           wood_types: woodTypesInput.value.split(',').map(function(value) { return value.trim(); }).filter(Boolean),
@@ -5576,6 +5597,9 @@ function productsAdminPage(session) {
         slugInput.value = product.slug || '';
         shortDescriptionInput.value = product.short_description || '';
         descriptionInput.value = product.description || '';
+        heightInput.value = product.height_cm == null ? '' : product.height_cm;
+        widthInput.value = product.width_cm == null ? '' : product.width_cm;
+        lengthInput.value = product.length_cm == null ? '' : product.length_cm;
         priceInput.value = product.price == null ? '' : product.price;
         availabilityInput.value = product.availability || '';
         woodTypesInput.value = Array.isArray(product.wood_types) ? product.wood_types.join(', ') : '';
@@ -7192,8 +7216,20 @@ function normalizeProductInput(input) {
   if (availability && !['in_stock', 'made_to_order'].includes(availability)) throw new Error('Vyberte platnou dostupnost.');
   if (useContext.some((value) => !['interior', 'exterior'].includes(value))) throw new Error('Použití může být pouze interiér nebo exteriér.');
 
+  const dimensions = {};
+  for (const [key, label] of [['height_cm', 'Výška'], ['width_cm', 'Šířka'], ['length_cm', 'Délka']]) {
+    if (input[key] === undefined) continue;
+    const raw = input[key] === null ? '' : String(input[key]).trim();
+    const value = raw === '' ? null : Number(raw.replace(',', '.'));
+    if (value !== null && (!Number.isFinite(value) || value <= 0)) {
+      throw new Error(label + ' musí být kladné číslo v centimetrech.');
+    }
+    dimensions[key] = value;
+  }
+
   return {
     product: {
+      ...dimensions,
       title,
       slug,
       short_description: shortDescription || null,
@@ -7275,7 +7311,7 @@ async function listProducts() {
   const [products, categories, links, filters, filterOptions, filterLinks] = await Promise.all([
     supabaseRequest('products', {
       query: {
-        select: 'id,title,slug,short_description,description,photos,price,wood_types,availability,use_context,sort_order,is_visible,is_published,published_at,archived_at,created_at,updated_at',
+        select: 'id,title,slug,short_description,description,photos,price,height_cm,width_cm,length_cm,wood_types,availability,use_context,sort_order,is_visible,is_published,published_at,archived_at,created_at,updated_at',
         order: 'sort_order.asc,title.asc'
       }
     }),
@@ -7402,7 +7438,7 @@ async function createProduct(input) {
         method: 'POST',
         body: product,
         prefer: 'return=representation',
-        query: { select: 'id,title,slug,short_description,description,photos,price,wood_types,availability,use_context,sort_order,is_visible,is_published,published_at,archived_at,created_at,updated_at' }
+        query: { select: 'id,title,slug,short_description,description,photos,price,height_cm,width_cm,length_cm,wood_types,availability,use_context,sort_order,is_visible,is_published,published_at,archived_at,created_at,updated_at' }
       });
       break;
     } catch (error) {
@@ -7450,7 +7486,7 @@ async function updateProduct(id, input) {
     method: 'PATCH',
     query: {
       id: `eq.${id}`,
-      select: 'id,title,slug,short_description,description,photos,price,wood_types,availability,use_context,sort_order,is_visible,is_published,published_at,archived_at,created_at,updated_at'
+      select: 'id,title,slug,short_description,description,photos,price,height_cm,width_cm,length_cm,wood_types,availability,use_context,sort_order,is_visible,is_published,published_at,archived_at,created_at,updated_at'
     },
     body: product,
     prefer: 'return=representation'
@@ -7475,7 +7511,7 @@ async function archiveProduct(id) {
     method: 'PATCH',
     query: {
       id: `eq.${id}`,
-      select: 'id,title,slug,short_description,description,photos,price,wood_types,availability,use_context,sort_order,is_visible,is_published,published_at,archived_at,created_at,updated_at'
+      select: 'id,title,slug,short_description,description,photos,price,height_cm,width_cm,length_cm,wood_types,availability,use_context,sort_order,is_visible,is_published,published_at,archived_at,created_at,updated_at'
     },
     body: {
       is_visible: false,
@@ -7503,7 +7539,7 @@ async function restoreProduct(id) {
     method: 'PATCH',
     query: {
       id: `eq.${id}`,
-      select: 'id,title,slug,short_description,description,photos,price,wood_types,availability,use_context,sort_order,is_visible,is_published,published_at,archived_at,created_at,updated_at'
+      select: 'id,title,slug,short_description,description,photos,price,height_cm,width_cm,length_cm,wood_types,availability,use_context,sort_order,is_visible,is_published,published_at,archived_at,created_at,updated_at'
     },
     body: {
       archived_at: null
@@ -9095,7 +9131,7 @@ async function getPublicCmsPayload(locale = 'cs') {
     }),
     supabaseRequest('products', {
       query: {
-        select: 'id,title,slug,short_description,description,photos,price,wood_types,availability,use_context,sort_order,is_visible,is_published,published_at,archived_at,updated_at',
+        select: 'id,title,slug,short_description,description,photos,price,height_cm,width_cm,length_cm,wood_types,availability,use_context,sort_order,is_visible,is_published,published_at,archived_at,updated_at',
         order: 'sort_order.asc,title.asc'
       }
     }),

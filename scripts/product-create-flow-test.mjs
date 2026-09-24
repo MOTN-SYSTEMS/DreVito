@@ -188,6 +188,55 @@ try {
   await ui.action('edit', created[2].id);
   await ui.submit('save');
   assert.ok(!(await api('/api/public-content?locale=cs')).products.some(row => row.id === created[2].id));
+  // Structured dimensions use the real editor and HTTP persistence, with
+  // independent optional values and no changes to unrelated product fields.
+  ui = await editor();
+  const dimensionProduct = (await api('/admin/api/products')).products.find(row => row.id === created[0].id);
+  await ui.action('edit', dimensionProduct.id);
+  for (const key of ['height', 'width', 'length']) assert.equal(ui.el(`product-${key}-cm`).value, '');
+  ui.el('product-height-cm').value = '12.5';
+  ui.el('product-width-cm').value = '20';
+  ui.el('product-length-cm').value = '30.75';
+  await ui.submit();
+  ui = await editor();
+  await ui.action('edit', dimensionProduct.id);
+  for (const [key, value] of [['height', 12.5], ['width', 20], ['length', 30.75]]) {
+    assert.equal(Number(ui.el(`product-${key}-cm`).value), value);
+  }
+  const dimensionSaved = (await api('/admin/api/products')).products.find(row => row.id === dimensionProduct.id);
+  for (const key of ['title', 'slug', 'description', 'short_description', 'price', 'photos', 'category_ids', 'filter_option_ids', 'is_visible', 'is_published', 'published_at']) {
+    assert.deepEqual(dimensionSaved[key], dimensionProduct[key], `Dimensions must preserve ${key}`);
+  }
+  ui.el('product-height-cm').value = '14.25';
+  ui.el('product-width-cm').value = '';
+  await ui.submit();
+  ui = await editor();
+  await ui.action('edit', dimensionProduct.id);
+  assert.equal(Number(ui.el('product-height-cm').value), 14.25);
+  assert.equal(ui.el('product-width-cm').value, '');
+  assert.equal(Number(ui.el('product-length-cm').value), 30.75);
+  const current = (await api('/admin/api/products')).products.find(row => row.id === dimensionProduct.id);
+  const oldClient = { ...current };
+  for (const key of ['height_cm', 'width_cm', 'length_cm']) delete oldClient[key];
+  const preserved = await api(`/admin/api/products/${current.id}`, { method: 'PATCH', body: JSON.stringify(oldClient) });
+  assert.equal(preserved.product.height_cm, 14.25, 'Older clients must preserve dimensions');
+  for (const bad of [-1, 0, 'Infinity', 'NaN', 'abc']) {
+    const response = await request(`/admin/api/products/${current.id}`, { method: 'PATCH', body: JSON.stringify({ ...current, height_cm: bad }) });
+    assert.ok(!response.ok, `Reject invalid dimension ${bad}`);
+  }
+  ui.el('product-new').fire('click');
+  await ui.fill('DIMENSIONS CREATE');
+  ui.el('product-height-cm').value = '1.5';
+  ui.el('product-width-cm').value = '2';
+  ui.el('product-length-cm').value = '3';
+  await ui.submit('save');
+  const dimensionDraft = (await api('/admin/api/products')).products.find(row => row.title === 'DIMENSIONS CREATE');
+  assert.equal(dimensionDraft.height_cm, 1.5);
+  assert.equal(dimensionDraft.width_cm, 2);
+  assert.equal(dimensionDraft.length_cm, 3);
+  assert.equal(dimensionDraft.is_published, false);
+  for (const key of ['height', 'width', 'length']) assert.equal(ui.el(`product-${key}-cm`).value, '');
+  console.log('PASS: dimensions create, save/reload, edit, clear, optional/legacy products, old clients, invalid values and unrelated-field preservation.');
   // Explicit NEW must clear identity, photos, slug state, categories and price
   // even when leaving an existing product's edit form.
   await ui.action('edit', created[0].id);
@@ -204,7 +253,7 @@ try {
   assert.notEqual(duplicate.id, created[0].id);
   assert.deepEqual(duplicate.photos, []);
   assert.deepEqual(duplicate.category_ids, []);
-  assert.equal(rows.length, 11);
+  assert.equal(rows.length, 12);
   assert.equal(ui.writes.at(-1).method, 'POST');
   // The canonical description is the optional product story. Exercise the
   // actual editor, persistence and public route, including clearing after reload.
