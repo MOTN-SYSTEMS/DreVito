@@ -1063,13 +1063,6 @@
             box-shadow: 0 10px 30px rgba(43, 33, 24, 0.12);
         }
         .nav__logo img { height: 122px; top: 14px; left: 10px; }
-        .nav__logo::before,
-        .nav__logo img {
-            transform-origin: top left;
-            transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .nav.scrolled .nav__logo::before,
-        .nav.scrolled .nav__logo img { transform: translateX(-8px) scale(0.42); }
         .nav__links { gap: clamp(0.85rem, 1.7vw, 1.75rem); }
         .nav__link {
             position: relative;
@@ -1629,8 +1622,6 @@
             .nav__logo { min-width: 118px; }
             .nav__logo::before { width: 116px; height: 116px; top: 4px; left: 0; }
             .nav__logo img { height: 98px; top: 13px; left: 9px; }
-            .nav.scrolled .nav__logo::before,
-            .nav.scrolled .nav__logo img { transform: translateX(-8px) scale(0.37); }
             .nav__dropdown-toggle { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
             .hero__content { padding: 5rem 1.25rem 8rem; }
             .hero__bg::after {
@@ -1698,15 +1689,7 @@
         @media (prefers-reduced-motion: reduce) {
             html { scroll-behavior: auto; }
             *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
-            .nav__logo::before,
-            .nav__logo img { transition-duration: 180ms !important; transition-timing-function: ease-out !important; }
-            .nav.scrolled .nav__logo::before,
-            .nav.scrolled .nav__logo img { transform: scale(0.42); }
             .motion-ready .reveal-item { opacity: 1; transform: none; }
-        }
-        @media (prefers-reduced-motion: reduce) and (max-width: 768px) {
-            .nav.scrolled .nav__logo::before,
-            .nav.scrolled .nav__logo img { transform: scale(0.37); }
         }
     </style>
 </head>
