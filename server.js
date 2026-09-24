@@ -9327,6 +9327,9 @@ function renderPublicBlogPostPage(post, statusCode = 200) {
     }
     a { color: inherit; }
     .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
       background: #2a1f16;
       color: var(--panel);
       border-bottom: 1px solid rgba(201, 169, 110, 0.2);
@@ -9348,6 +9351,7 @@ function renderPublicBlogPostPage(post, statusCode = 200) {
       font-family: var(--font-display);
       font-size: 1.3rem;
       font-weight: 600;
+      transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
     }
     .brand img {
       width: 56px;
@@ -9355,7 +9359,11 @@ function renderPublicBlogPostPage(post, statusCode = 200) {
       object-fit: contain;
       background: var(--panel);
       border-radius: 2px;
+      transform-origin: center;
+      transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
     }
+    .topbar.scrolled .brand { transform: translateX(-6px); }
+    .topbar.scrolled .brand img { transform: scale(0.74); }
     .nav-link {
       color: rgba(253, 252, 250, 0.78);
       font-size: 0.92rem;
@@ -9445,6 +9453,11 @@ function renderPublicBlogPostPage(post, statusCode = 200) {
       .actions { flex-direction: column; }
       .button { width: 100%; }
     }
+    @media (prefers-reduced-motion: reduce) {
+      .brand, .brand img { transition-duration: 180ms; transition-timing-function: ease-out; }
+      .topbar.scrolled .brand { transform: none; }
+      .topbar.scrolled .brand img { transform: scale(0.78); }
+    }
   </style>
 </head>
 <body>
@@ -9470,6 +9483,17 @@ function renderPublicBlogPostPage(post, statusCode = 200) {
       <a class="button" href="/#blog">Další články</a>
     </div>
   </main>
+  <script>
+    (function() {
+      var topbar = document.querySelector('.topbar');
+      if (!topbar) return;
+      function updateTopbar() {
+        topbar.classList.toggle('scrolled', window.scrollY > 18);
+      }
+      updateTopbar();
+      window.addEventListener('scroll', updateTopbar, { passive: true });
+    })();
+  </script>
 </body>
 </html>`
   };
