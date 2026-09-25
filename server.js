@@ -10210,7 +10210,12 @@ function renderPublicProductPage(product, statusCode = 200) {
       border-bottom: 1px solid rgba(43, 33, 24, 0.1);
       background: rgba(241, 234, 223, 0.94);
       backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      transition: background-color 360ms cubic-bezier(0.16, 1, 0.3, 1);
     }
+    .topbar.scrolled { background: rgba(241, 234, 223, 0.72); }
+    .topbar.scrolled .brand { transform: translateX(-6px); }
+    .topbar.scrolled .topnav a { color: var(--ink); }
     .topbar-inner {
       width: min(1240px, calc(100% - 40px));
       min-height: 82px;
@@ -10220,7 +10225,7 @@ function renderPublicProductPage(product, statusCode = 200) {
       justify-content: space-between;
       gap: 28px;
     }
-    .brand { display: inline-flex; align-items: center; gap: 12px; text-decoration: none; }
+    .brand { display: inline-flex; align-items: center; gap: 12px; text-decoration: none; transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1); }
     .brand img { width: 66px; height: 66px; object-fit: contain; }
     .brand span { font: 600 1.15rem/1 var(--display); letter-spacing: 0.04em; }
     .topnav { display: flex; align-items: center; gap: clamp(16px, 2.5vw, 34px); }
@@ -10390,6 +10395,17 @@ function renderPublicProductPage(product, statusCode = 200) {
   </main>
 
   <footer>© 2026 Dřevito · Dřevěné výrobky zhotovené srdcem</footer>
+  <script>
+    (function() {
+      var topbar = document.querySelector('.topbar');
+      if (!topbar) return;
+      function updateTopbar() {
+        topbar.classList.toggle('scrolled', window.scrollY > 18);
+      }
+      updateTopbar();
+      window.addEventListener('scroll', updateTopbar, { passive: true });
+    })();
+  </script>
 </body>
 </html>`
   };
@@ -10544,9 +10560,14 @@ function renderPublicBlogPostPage(post, statusCode = 200) {
       top: 0;
       z-index: 100;
       background: #2a1f16;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      transition: background-color 360ms cubic-bezier(0.16, 1, 0.3, 1);
       color: var(--panel);
       border-bottom: 1px solid rgba(201, 169, 110, 0.2);
     }
+    .topbar.scrolled { background: rgba(42, 31, 22, 0.78); }
+    .topbar.scrolled .nav-link { color: var(--panel); }
     .topbar-inner {
       width: min(1120px, calc(100% - 32px));
       min-height: 78px;
@@ -10572,11 +10593,8 @@ function renderPublicBlogPostPage(post, statusCode = 200) {
       object-fit: contain;
       background: var(--panel);
       border-radius: 2px;
-      transform-origin: center;
-      transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
     }
     .topbar.scrolled .brand { transform: translateX(-6px); }
-    .topbar.scrolled .brand img { transform: scale(0.74); }
     .nav-link {
       color: rgba(253, 252, 250, 0.78);
       font-size: 0.92rem;
@@ -10667,9 +10685,7 @@ function renderPublicBlogPostPage(post, statusCode = 200) {
       .button { width: 100%; }
     }
     @media (prefers-reduced-motion: reduce) {
-      .brand, .brand img { transition-duration: 180ms; transition-timing-function: ease-out; }
-      .topbar.scrolled .brand { transform: none; }
-      .topbar.scrolled .brand img { transform: scale(0.78); }
+      .topbar, .brand { transition: none; }
     }
   </style>
 </head>
