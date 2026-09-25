@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import ImagePosition from '../image-position.js';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
@@ -67,6 +68,7 @@ async function editor() {
   let pending = 0;
   const writes = [];
   const context = {
+    ImagePosition, ImagePositionEditor: { markup: () => '', bind() {} },
     document: { getElementById: el },
     window: { location: { search: '' }, history: { replaceState() {} }, confirm: () => true },
     URLSearchParams, console, FormData,
@@ -314,6 +316,26 @@ try {
   assert.equal(dimensionDraft.is_published, false);
   for (const key of ['height', 'width', 'length']) assert.equal(ui.el(`product-${key}-cm`).value, '');
   console.log('PASS: dimensions create, save/reload, edit, clear, optional/legacy products, old clients, invalid values and unrelated-field preservation.');
+  // Positions persist in the existing photo references and preserve all other fields.
+  const positionBefore = (await api('/admin/api/products')).products.find(row => row.id === created[0].id);
+  for (const focal_y of [100, 0, 73]) {
+    await api('/admin/api/products/' + positionBefore.id, { method: 'PATCH', body: JSON.stringify({
+      ...positionBefore, photos: positionBefore.photos.map(photo => ({ ...photo, focal_x: 25, focal_y }))
+    }) });
+    const reloaded = (await api('/admin/api/products')).products.find(row => row.id === positionBefore.id);
+    assert.equal(reloaded.photos[0].focal_y, focal_y);
+    for (const key of ['title', 'slug', 'price', 'description', 'category_ids', 'height_cm', 'surface_finish']) assert.deepEqual(reloaded[key], positionBefore[key]);
+    assert.equal(reloaded.photos[0].url, positionBefore.photos[0].url);
+    const publicProduct = (await api('/api/public-content?locale=cs')).products.find(row => row.id === reloaded.id);
+    assert.equal(publicProduct.featured_image.focal_y, focal_y);
+    const detail = await (await request('/vyrobek/' + reloaded.slug)).text();
+    assert.ok(detail.includes('object-position:25% ' + focal_y + '%'));
+  }
+  assert.deepEqual(ImagePosition.normalize({}), { focal_x: 50, focal_y: 50 });
+  assert.deepEqual(ImagePosition.normalize({ focal_x: -20, focal_y: 200 }), { focal_x: 0, focal_y: 100 });
+  for (const invalid of [null, '', 'bad', Infinity, {}, true]) assert.equal(ImagePosition.coordinate(invalid), 50);
+  console.log('PASS: image position save/reload, public API and detail rendering, bounds/defaults, original URL and unrelated fields preserved.');
+
   // Explicit NEW must clear identity, photos, slug state, categories and price
   // even when leaving an existing product's edit form.
   await ui.action('edit', created[0].id);

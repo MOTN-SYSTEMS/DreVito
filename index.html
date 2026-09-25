@@ -2086,6 +2086,7 @@
     </footer>
 
 <script src="product-dimensions.js"></script>
+<script src="image-position.js"></script>
 <script>
 (function() {
     // The CMS can move the contact block. Do not let the browser scroll to its
@@ -2405,7 +2406,7 @@
             (Array.isArray(p.wood_types) ? p.wood_types : []).forEach(function(wood) { meta.push(wood); });
             var metaHtml = meta.length ? '<div class="product-card__meta">' + meta.map(function(item) { return '<span>' + escapeHtml(item) + '</span>'; }).join('') + '</div>' : '';
             var imgHtml = image
-                ? '<img src="' + escapeHtml(image) + '" alt="' + escapeHtml(productImageAlt(p)) + '" style="width:100%;height:100%;object-fit:cover;">'
+                ? '<img src="' + escapeHtml(image) + '" alt="' + escapeHtml(productImageAlt(p)) + '" style="width:100%;height:100%;object-fit:cover;object-position:' + ImagePosition.style(p.featured_image) + ';">'
                 : '<span>' + escapeHtml(name) + '</span>';
             html += '<a href="' + escapeHtml(href) + '" class="product-card">' +
                 '<div class="product-card__image">' + imgHtml + '</div>' +
@@ -2493,7 +2494,7 @@
             ? paragraphs.map(function(part) { return '<p class="content-detail__text">' + escapeHtml(part) + '</p>'; }).join('')
             : '<p class="content-detail__text">' + escapeHtml(siteCopyText('products.detail.empty', 'K tomuto výrobku brzy doplníme podrobnosti.')) + '</p>';
         var imgHtml = image
-            ? '<img src="' + escapeHtml(image) + '" alt="' + escapeHtml(productImageAlt(product)) + '">'
+            ? '<img src="' + escapeHtml(image) + '" alt="' + escapeHtml(productImageAlt(product)) + '" style="object-position:' + ImagePosition.style(product.featured_image) + '">'
             : '<span>' + escapeHtml(name) + '</span>';
         detail.innerHTML =
             '<div class="content-detail__image">' + imgHtml + '</div>' +
@@ -2576,7 +2577,7 @@
             .concat(Array.isArray(product.use_context) ? product.use_context.map(function(item) { return useLabels[item] || item; }) : [])
             .concat(Array.isArray(product.filter_options) ? product.filter_options.map(function(option) { return option && option.title; }).filter(Boolean) : []);
         var visualHtml = image
-            ? '<img src="' + escapeHtml(image) + '" alt="' + escapeHtml(productImageAlt(product)) + '">'
+            ? '<img src="' + escapeHtml(image) + '" alt="' + escapeHtml(productImageAlt(product)) + '" style="object-position:' + ImagePosition.style(product.featured_image) + '">'
             : '<div class="file-product__placeholder">' + escapeHtml(name) + '</div>';
         var actionHtml = '<a class="file-product__button" href="mailto:info@drevito.cz">Poptat výrobek</a>';
         var dimensionsText = formatProductDimensions(product);

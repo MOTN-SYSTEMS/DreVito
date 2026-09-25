@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 const sharp = require('sharp');
 const formatProductDimensions = require('./product-dimensions');
+const imagePosition = require('./image-position');
 const { resolveQrTarget, renderQr } = require('./lib/static-qr');
 const { URL } = require('url');
 
@@ -78,6 +79,8 @@ const PUBLIC_STATIC_FILES = new Set([
   'image-upload-tools.js',
   'qr-tools.js',
   'product-dimensions.js',
+  'image-position.js',
+  'image-position-editor.js',
   'autor.JPG',
   'cajne-stolicky.JPG',
   'custom-service.jpg',
@@ -2022,6 +2025,15 @@ function adminLayout(title, content) {
       font-size: 0.74rem;
       text-align: center;
     }
+    .image-position { display: grid; gap: 10px; min-width: 0; }
+    .image-position__frame { width: min(100%, 260px); aspect-ratio: 4 / 4.6; overflow: hidden; border-radius: 12px; background: var(--line); cursor: grab; touch-action: none; }
+    .image-position__frame.is-dragging { cursor: grabbing; }
+    .photo-row .image-position__frame img { display: block; width: 100%; height: 100%; max-width: none; aspect-ratio: auto; object-fit: cover; border: 0; border-radius: 0; user-select: none; }
+    .image-position__help { margin: 0; color: var(--muted); font-size: 0.8rem; line-height: 1.5; }
+    .image-position input[type="range"] { width: 100%; min-height: 44px; padding: 0; accent-color: var(--ink); cursor: pointer; }
+    .image-position select { width: 100%; min-width: 0; }
+    .image-position button { justify-self: start; min-height: 44px; }
+    @media (max-width: 560px) { #product-photos .photo-row { grid-template-columns: 1fr; } #product-photos .photo-row > img { display: none; } }
     .photo-row__fields {
       display: grid;
       gap: 8px;
@@ -2614,6 +2626,8 @@ function adminLayout(title, content) {
     }
   </style>
   <script src="/qr-tools.js"></script>
+  <script src="/image-position.js"></script>
+  <script src="/image-position-editor.js"></script>
 </head>
 <body>
   <main class="shell">
@@ -5717,13 +5731,14 @@ function productsAdminPage(session) {
         }
         photosRoot.innerHTML = photos.map(function(photo, index) {
           var thumb = photo.url
-            ? '<img src="' + escapeHtml(photo.url) + '" alt="' + escapeHtml(photo.alt || '') + '">'
+            ? '<img src="' + escapeHtml(photo.url) + '" alt="' + escapeHtml(photo.alt || '') + '" style="object-position:' + ImagePosition.style(photo) + '">'
             : '<div class="photo-row__empty">Bez náhledu</div>';
           return '<article class="photo-row" data-index="' + index + '">' +
             thumb +
             '<div class="photo-row__fields">' +
               '<input data-photo-field="url" type="hidden" value="' + escapeHtml(photo.url || '') + '">' +
               '<input data-photo-field="alt" type="hidden" value="' + escapeHtml(photo.alt || '') + '">' +
+              (photo.url ? ImagePositionEditor.markup(photo, index, escapeHtml) : '') +
               '<label>Popisek fotky<input data-photo-field="caption" value="' + escapeHtml(photo.caption || '') + '" placeholder="Volitelné"></label>' +
               '<input data-photo-field="media_id" type="hidden" value="' + escapeHtml(photo.media_id || '') + '">' +
               '<div class="photo-row__buttons">' +
@@ -5755,7 +5770,7 @@ function productsAdminPage(session) {
         root.innerHTML = products.map(function(product) {
           var photo = firstPhoto(product);
           var thumb = photo && photo.url
-            ? '<img class="product-thumb" src="' + escapeHtml(photo.url) + '" alt="' + escapeHtml(photo.alt || product.title) + '">'
+            ? '<img class="product-thumb" src="' + escapeHtml(photo.url) + '" alt="' + escapeHtml(photo.alt || product.title) + '" style="object-position:' + ImagePosition.style(photo) + '">'
             : '<div class="product-thumb product-thumb--empty">Bez fotky</div>';
           var categoryText = product.categories && product.categories.length
             ? product.categories.map(function(category) { return category.title; }).join(', ')
@@ -5946,6 +5961,8 @@ function productsAdminPage(session) {
           uploadButton.textContent = 'Nahrát fotku';
         });
       });
+
+      ImagePositionEditor.bind(photosRoot, function() { return photos; });
 
       photosRoot.addEventListener('input', function(event) {
         var field = event.target.getAttribute('data-photo-field');
@@ -7185,6 +7202,7 @@ function normalizeProductPhotoInput(input, index) {
     url,
     alt,
     caption,
+    ...imagePosition.normalize(photo),
     sort_order: index,
     is_featured: index === 0
   };
@@ -8821,6 +8839,7 @@ function hydratePublicImageRef(image, mediaMap) {
   if (!url) return null;
 
   return {
+    ...imagePosition.normalize(source),
     media_id: mediaId || '',
     url,
     alt: String(source.alt || (media && media.alt_text) || '').trim(),
@@ -10130,10 +10149,10 @@ function renderPublicProductPage(product, statusCode = 200) {
     ? descriptionBlocks.map((block) => `<p>${escapeHtml(block)}</p>`).join('')
     : '';
   const primaryImageHtml = primaryPhoto
-    ? `<img src="${escapeHtml(primaryPhoto.url)}" alt="${escapeHtml(primaryPhoto.alt || title)}">`
+    ? `<img src="${escapeHtml(primaryPhoto.url)}" alt="${escapeHtml(primaryPhoto.alt || title)}" style="object-position:${imagePosition.style(primaryPhoto)}">`
     : `<div class="product-visual-placeholder">${escapeHtml(title)}</div>`;
   const secondaryImagesHtml = photos.slice(1, 4).length
-    ? `<div class="gallery-grid">${photos.slice(1, 4).map((photo) => `<figure><img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.alt || title)}" loading="lazy"></figure>`).join('')}</div>`
+    ? `<div class="gallery-grid">${photos.slice(1, 4).map((photo) => `<figure><img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.alt || title)}" style="object-position:${imagePosition.style(photo)}" loading="lazy"></figure>`).join('')}</div>`
     : '';
   const dimensionsText = formatProductDimensions(product);
   const tagsHtml = detailTags.length
