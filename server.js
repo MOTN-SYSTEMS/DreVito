@@ -10192,6 +10192,7 @@ function renderPublicProductPage(product, statusCode = 200) {
   <meta property="og:description" content="${escapeHtml(summary.slice(0, 200))}">
   ${primaryPhoto ? `<meta property="og:image" content="${escapeHtml(primaryPhoto.url)}">` : ''}
   <link rel="icon" href="/favicon.ico?v=20260622-3" sizes="any">
+  <link rel="preload" as="image" href="/drevito-logo-transparent.png" fetchpriority="high">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -10210,7 +10211,8 @@ function renderPublicProductPage(product, statusCode = 200) {
       --body: 'Manrope', system-ui, sans-serif;
     }
     * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
+    html { scroll-behavior: smooth; scroll-padding-top: 106px; }
+    main [id] { scroll-margin-top: 12px; }
     body {
       margin: 0;
       background:
@@ -10232,7 +10234,7 @@ function renderPublicProductPage(product, statusCode = 200) {
       -webkit-backdrop-filter: blur(14px);
       transition: background-color 360ms cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .topbar.scrolled { background: rgba(241, 234, 223, 0.72); }
+    .topbar.scrolled { background: rgba(241, 234, 223, 0.62); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
     .topbar.scrolled .brand { transform: translateX(-6px); }
     .topbar.scrolled .topnav a { color: var(--ink); }
     .topbar-inner {
@@ -10335,6 +10337,7 @@ function renderPublicProductPage(product, statusCode = 200) {
     .final-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 46px; }
     footer { padding: 34px 20px; background: #221a14; color: rgba(255, 252, 246, 0.58); text-align: center; font-size: 0.75rem; }
     @media (max-width: 820px) {
+      html { scroll-padding-top: 96px; }
       .topbar-inner { min-height: 72px; }
       .brand img { width: 56px; height: 56px; }
       .brand span { display: none; }
@@ -10367,7 +10370,7 @@ function renderPublicProductPage(product, statusCode = 200) {
   <header class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="/" aria-label="Dřevito – úvodní stránka">
-        <img src="/drevito-logo-transparent.png" alt="">
+        <img src="/drevito-logo-transparent.png" alt="" width="1024" height="1024" loading="eager" decoding="sync" fetchpriority="high">
         <span>Dřevito</span>
       </a>
       <nav class="topnav" aria-label="Hlavní navigace">
@@ -10550,6 +10553,7 @@ function renderPublicBlogPostPage(post, statusCode = 200) {
   <meta name="description" content="${escapeHtml(post.excerpt || stripHtmlToText(post.main_content).slice(0, 155) || 'Blog Dřevito')}">
   <link rel="canonical" href="/blog/${escapeHtml(post.slug)}">
   <link rel="icon" href="/favicon.ico?v=20260622-3" sizes="any">
+  <link rel="preload" as="image" href="/drevito-logo-transparent.png" fetchpriority="high">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -10565,6 +10569,8 @@ function renderPublicBlogPostPage(post, statusCode = 200) {
       --font-body: 'DM Sans', system-ui, sans-serif;
     }
     * { box-sizing: border-box; }
+    html { scroll-padding-top: 102px; }
+    main [id] { scroll-margin-top: 12px; }
     body {
       margin: 0;
       min-height: 100vh;
@@ -10585,7 +10591,7 @@ function renderPublicBlogPostPage(post, statusCode = 200) {
       color: var(--panel);
       border-bottom: 1px solid rgba(201, 169, 110, 0.2);
     }
-    .topbar.scrolled { background: rgba(42, 31, 22, 0.78); }
+    .topbar.scrolled { background: rgba(42, 31, 22, 0.72); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
     .topbar.scrolled .nav-link { color: var(--panel); }
     .topbar-inner {
       width: min(1120px, calc(100% - 32px));
@@ -10698,6 +10704,7 @@ function renderPublicBlogPostPage(post, statusCode = 200) {
       color: #fff;
     }
     @media (max-width: 640px) {
+      html { scroll-padding-top: 132px; }
       .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
       .brand img { width: 48px; height: 48px; }
       .actions { flex-direction: column; }
@@ -10712,7 +10719,7 @@ function renderPublicBlogPostPage(post, statusCode = 200) {
   <header class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="/">
-        <img src="/drevito-logo-transparent.png" alt="Dřevito">
+        <img src="/drevito-logo-transparent.png" alt="Dřevito" width="1024" height="1024" loading="eager" decoding="sync" fetchpriority="high">
         <span>Dřevito</span>
       </a>
       <a class="nav-link" href="/#blog">Zpět na blog</a>

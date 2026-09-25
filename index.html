@@ -9,6 +9,7 @@
             document.getElementById('site-base').href = new URL('.', window.location.href).href;
         }
     </script>
+    <link rel="preload" as="image" href="drevito-logo-transparent.png" fetchpriority="high">
     <title>Dřevito – když se umění snoubí s citem k přirozenosti</title>
     <meta name="description" content="Ruční výroba z masivního dřeva. Každý kus je originál. Zakázková výroba individuálních dřevěných výrobků.">
     <link id="page-canonical" rel="canonical" href="/">
@@ -1013,6 +1014,7 @@
             --nav-height: 82px;
         }
         html { scroll-padding-top: calc(var(--nav-height) + 20px); }
+        :where(section[id], .content-detail, .homepage-story [id]) { scroll-margin-top: 24px; }
         body {
             background:
                 radial-gradient(circle at 8% 20%, rgba(182, 120, 66, 0.07), transparent 26rem),
@@ -1075,29 +1077,41 @@
             mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 102' preserveAspectRatio='none'%3E%3Cpath d='M0 0H1440V87C1240 104 1120 78 900 86S570 104 340 89S130 83 0 94Z'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
             transition: background-color var(--transition-smooth);
         }
-        .nav.scrolled::before { background: rgba(241, 234, 223, 0.72); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+        .nav.scrolled::before { background: rgba(241, 234, 223, 0.62); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
         .nav.scrolled .nav__link,
         .nav.scrolled .nav__dropdown-toggle { color: var(--color-primary); }
         .nav.scrolled .nav__link--login:hover { color: var(--color-card); }
         .nav__inner { max-width: 1320px; padding-inline: clamp(1.25rem, 4vw, 3rem); }
         .nav__logo { min-width: 154px; }
-        .nav__logo::before {
-            width: 142px;
-            height: 142px;
+        .nav__logo::before { content: none; }
+        /* One paint group keeps the artwork above its backing in every state. */
+        .nav__logo-mark {
+            position: absolute;
             top: 4px;
             left: 0;
+            width: 142px;
+            height: 142px;
             background: #D7B77E;
+            border-radius: 50%;
             box-shadow: 0 10px 30px rgba(43, 33, 24, 0.12);
-        }
-        .nav__logo img { height: 122px; top: 14px; left: 10px; }
-        .nav__logo::before,
-        .nav__logo img {
+            isolation: isolate;
             transform-origin: top left;
             transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
         }
-        /* Fill the existing header height while keeping both layers centered. */
-        .nav.scrolled .nav__logo::before { transform: translate(-8px, -2px) scale(calc(78 / 142)); }
-        .nav.scrolled .nav__logo img { transform: translate(-14px, -8px) scale(calc(70 / 122)); }
+        .nav__logo img {
+            width: 122px;
+            height: 122px;
+            top: 10px;
+            left: 10px;
+            object-fit: contain;
+            opacity: 1;
+            visibility: visible;
+            z-index: 1;
+            transform-origin: top left;
+            transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .nav.scrolled .nav__logo-mark { transform: translate(-8px, -2px) scale(0.549295775); }
+        .nav.scrolled .nav__logo img { transform: translate(-10px, -10px) scale(1.163934426); }
         .nav__links { gap: clamp(0.85rem, 1.7vw, 1.75rem); }
         .nav__link {
             position: relative;
@@ -1701,10 +1715,10 @@
         @media (max-width: 768px) {
             :root { --nav-height: 74px; }
             .nav__logo { min-width: 118px; }
-            .nav__logo::before { width: 116px; height: 116px; top: 4px; left: 0; }
-            .nav__logo img { height: 98px; top: 13px; left: 9px; }
-            .nav.scrolled .nav__logo::before { transform: translate(-8px, -2px) scale(calc(70 / 116)); }
-            .nav.scrolled .nav__logo img { transform: translate(-13px, -7px) scale(calc(62 / 98)); }
+            .nav__logo-mark { width: 116px; height: 116px; }
+            .nav__logo img { width: 98px; height: 98px; top: 9px; left: 9px; }
+            .nav.scrolled .nav__logo-mark { transform: translate(-8px, -2px) scale(0.603448276); }
+            .nav.scrolled .nav__logo img { transform: translate(-9px, -9px) scale(1.183673469); }
             .nav__dropdown-toggle { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
             .hero__content { padding: 5rem 1.25rem 8rem; }
             .hero__bg::after {
@@ -1774,7 +1788,7 @@
         @media (prefers-reduced-motion: reduce) {
             html { scroll-behavior: auto; }
             *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
-            .nav__logo::before,
+            .nav__logo-mark,
             .nav__logo img { transition: none !important; }
             .motion-ready .reveal-item { opacity: 1; transform: none; }
         }
@@ -1824,7 +1838,7 @@
     <nav class="nav">
         <div class="nav__inner">
             <a href="#" class="nav__logo">
-                <img src="drevito-logo-transparent.png" alt="Dřevito">
+                <span class="nav__logo-mark"><img src="drevito-logo-transparent.png" alt="Dřevito" width="122" height="122" loading="eager" decoding="sync" fetchpriority="high"></span>
             </a>
             <div class="nav__links">
                 <a href="#about" class="nav__link" data-copy-key="nav.about">O nás</a>
@@ -2102,6 +2116,17 @@
             behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
             block: 'start'
         });
+    }
+
+    var homepageLayoutReady = false;
+    function restoreHomepageAnchor() {
+        if (!homepageLayoutReady) return;
+        var id = window.location.hash.slice(1);
+        if (['about', 'products', 'author', 'blog', 'custom'].indexOf(id) === -1) return;
+        var target = document.getElementById(id);
+        if (!target || !target.getClientRects().length) return;
+        // Restore deep links after layout/font changes without a second smooth scroll.
+        target.scrollIntoView({ behavior: 'instant', block: 'start' });
     }
 
     var defaultProductCategories = [];
@@ -3244,7 +3269,7 @@
 
     // Close on outside click
     document.onclick = function(e) {
-        if (dropdownMenu && !e.target.closest('.nav__dropdown') && !e.target.closest('.nav__item-with-dropdown')) {
+        if (dropdownMenu && ((!e.target.closest('.nav__dropdown') && !e.target.closest('.nav__item-with-dropdown')) || e.target.closest('.nav__dropdown-menu a[href^="#"]:not(.has-sub)'))) {
             dropdownMenu.classList.remove('open');
             if (dropdownToggle) dropdownToggle.setAttribute('aria-expanded', 'false');
         }
@@ -3300,7 +3325,11 @@
         // Font metrics also affect the height of the sections above contact.
         return document.fonts ? document.fonts.ready : null;
     }).then(function() {
-        requestAnimationFrame(restoreContactAnchor);
+        requestAnimationFrame(function() {
+            homepageLayoutReady = true;
+            restoreContactAnchor();
+            restoreHomepageAnchor();
+        });
     });
 })();
 </script>
